@@ -1,0 +1,248 @@
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { theme } from '../constants/theme';
+import { useStore } from '../store/useStore';
+
+export const AddRoundTab = ({ route, navigation }: any) => {
+  const { sessionId } = route.params;
+  const session = useStore(state => state.sessions.find(s => s.id === sessionId));
+  const addRound = useStore(state => state.addRound);
+
+  const [winnerId, setWinnerId] = useState<string | null>(null);
+  const [amountStr, setAmountStr] = useState('');
+
+  if (!session) return null;
+
+  const handleSetWinner = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setWinnerId(id);
+  };
+
+  const amount = parseInt(amountStr, 10);
+  const autoLoserIds = session.players.filter(p => p.id !== winnerId).map(p => p.id);
+  const isValid = winnerId && autoLoserIds.length > 0 && !isNaN(amount) && amount > 0;
+
+  const handleAddRound = () => {
+    if (isValid && session.players.length >= 2) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      addRound(sessionId, winnerId, autoLoserIds, amount);
+      setWinnerId(null);
+      setAmountStr('');
+      Alert.alert('Success', 'Round added successfully');
+      navigation.navigate('Leaderboard');
+    }
+  };
+
+  const getWinnerName = () => session.players.find(p => p.id === winnerId)?.name;
+  const splitAmount = isValid ? Math.round(amount / autoLoserIds.length) : 0;
+  const actualAmount = splitAmount * autoLoserIds.length;
+
+  return (
+    <KeyboardAvoidingView 
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={100}
+    >
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.label}>Who won?</Text>
+        <View style={styles.chipsContainer}>
+          {session.players.map(p => (
+            <TouchableOpacity
+              key={p.id}
+              style={[
+                styles.chip,
+                winnerId === p.id && styles.chipWinner
+              ]}
+              onPress={() => handleSetWinner(p.id)}
+            >
+              <Text style={[styles.chipText, winnerId === p.id && styles.chipTextSelected]}>
+                {p.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.label}>Amount Won</Text>
+        <View style={styles.amountContainer}>
+          <Text style={styles.currencySymbol}>Rs. </Text>
+          <TextInput
+            style={styles.amountInput}
+            keyboardType="numeric"
+            placeholder="0"
+            placeholderTextColor={theme.colors.textSecondary}
+            value={amountStr}
+            onChangeText={setAmountStr}
+          />
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickAmountsContainer}>
+          {(() => {
+            const recentAmounts = Array.from(new Set(session.rounds.map(r => r.amount))).slice(0, 5);
+            const quickAmounts = recentAmounts.length > 0 ? recentAmounts : [100, 500, 1000, 5000];
+            return quickAmounts.map((amt) => (
+              <TouchableOpacity
+                key={amt}
+                style={styles.quickAmountChip}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setAmountStr(amt.toString());
+                }}
+              >
+                <Text style={styles.quickAmountText}>+{amt}</Text>
+              </TouchableOpacity>
+            ));
+          })()}
+        </ScrollView>
+
+        {isValid && (
+          <View style={styles.previewBox}>
+            <Text style={styles.previewText}>
+              <Text style={{color: theme.colors.winGreen}}>{getWinnerName()}</Text> wins Rs. {amount}
+            </Text>
+          </View>
+        )}
+
+      </ScrollView>
+      <View style={styles.footer}>
+        <TouchableOpacity
+          style={[styles.addButton, !isValid && styles.addButtonDisabled]}
+          onPress={handleAddRound}
+          disabled={!isValid}
+        >
+          <Text style={[styles.addButtonText, !isValid && styles.addButtonTextDisabled]}>
+            Add Round
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  scrollContent: {
+    padding: theme.spacing.md,
+  },
+  label: {
+    ...theme.typography.sectionHeader,
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+  },
+  chipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  chip: {
+    backgroundColor: theme.colors.surface,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.full,
+    marginRight: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  chipWinner: {
+    backgroundColor: theme.colors.accentSoft,
+    borderColor: theme.colors.accent,
+    borderStyle: 'solid',
+    borderWidth: 2,
+  },
+  chipLoser: {
+    backgroundColor: '#F4433622',
+    borderColor: theme.colors.lossRed,
+    borderStyle: 'solid',
+    borderWidth: 2,
+  },
+  chipText: {
+    ...theme.typography.body,
+    color: theme.colors.textPrimary,
+  },
+  chipTextSelected: {
+    fontWeight: 'bold',
+  },
+  amountContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderColor: theme.colors.border,
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing.md,
+    marginTop: theme.spacing.sm,
+  },
+  currencySymbol: {
+    ...theme.typography.title,
+    color: theme.colors.accent,
+    marginRight: theme.spacing.sm,
+  },
+  amountInput: {
+    flex: 1,
+    ...theme.typography.title,
+    paddingVertical: theme.spacing.md,
+  },
+  quickAmountsContainer: {
+    flexDirection: 'row',
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.sm,
+  },
+  quickAmountChip: {
+    backgroundColor: theme.colors.surfaceElevated,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
+    borderRadius: theme.borderRadius.full,
+    marginRight: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  quickAmountText: {
+    ...theme.typography.body,
+    color: theme.colors.textPrimary,
+    fontWeight: 'bold',
+  },
+  previewBox: {
+    marginTop: theme.spacing.xl,
+    padding: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceElevated,
+    borderRadius: theme.borderRadius.md,
+    borderColor: theme.colors.accent,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  previewText: {
+    ...theme.typography.body,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  footer: {
+    padding: theme.spacing.md,
+    borderTopColor: theme.colors.border,
+    borderTopWidth: 1,
+    backgroundColor: theme.colors.background,
+  },
+  addButton: {
+    backgroundColor: theme.colors.accent,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(13, 13, 13, 0.3)',
+  },
+  addButtonDisabled: {
+    backgroundColor: theme.colors.surfaceElevated,
+    borderColor: theme.colors.border,
+  },
+  addButtonText: {
+    fontSize: theme.typography.sectionHeader.fontSize,
+    fontWeight: theme.typography.sectionHeader.fontWeight,
+    color: theme.colors.background,
+  },
+  addButtonTextDisabled: {
+    color: theme.colors.textSecondary,
+  },
+});
