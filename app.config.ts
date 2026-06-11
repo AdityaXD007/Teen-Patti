@@ -23,7 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     version: '1.0.0',
     slug: PROJECT_SLUG,
     orientation: 'portrait',
-    icon: config.icon || './assets/icon.png',
+    icon: './assets/icon.png',
     scheme: scheme,
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
@@ -37,22 +37,33 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       ...config.android,
-      googleServicesFile: './google-services.json',
+      versionCode: 41,
       runtimeVersion: '1.0.0',
+      googleServicesFile: './google-services.json',
       adaptiveIcon: {
         ...config.android?.adaptiveIcon,
+        foregroundImage: './assets/adaptive-icon.png',
         backgroundColor: '#FFFFFF',
       },
       edgeToEdgeEnabled: true,
       package: packageName,
     },
     web: {
-      ...config.web,
       bundler: 'metro',
       output: 'single',
+      favicon: './assets/favicon.png',
     },
     plugins: [
-         "@react-native-firebase/app",
+      "@react-native-firebase/app",
+      [
+        'expo-splash-screen',
+        {
+          image: './assets/splash-icon.png',
+          imageWidth: 200,
+          resizeMode: 'contain',
+          backgroundColor: '#FFFFFF',
+        },
+      ],
       [
         "@sentry/react-native/expo",
         {
@@ -70,12 +81,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       },
     },
     owner: OWNER,
-    updates: {
-      url: 'https://u.expo.dev/c709737c-ad4b-4258-9564-319e5c9c9ae7',
+
+    "updates": {
+      "url": "https://u.expo.dev/09cc93dc-0fb9-4f49-803f-0a6961fe7cf2",
       enabled: true,
       checkAutomatically: 'ON_LOAD',
       fallbackToCacheTimeout: 0,
-    },
+
+    }
   }
 }
 

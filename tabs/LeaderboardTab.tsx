@@ -27,10 +27,10 @@ export const LeaderboardTab = ({ route }: any) => {
 
   const handleLongPressPlayer = (playerId: string, playerName: string) => {
     const hasHistory = session.rounds.some(r => r.winnerId === playerId || r.loserIds.includes(playerId));
-    
+
     Alert.alert(
       'Remove Player',
-      hasHistory 
+      hasHistory
         ? `This player has round history. Delete anyway?`
         : `Are you sure you want to remove ${playerName}?`,
       [
@@ -47,16 +47,16 @@ export const LeaderboardTab = ({ route }: any) => {
         keyExtractor={p => p.id}
         renderItem={({ item, index }) => (
           <TouchableOpacity onLongPress={() => handleLongPressPlayer(item.id, item.name)} delayLongPress={500}>
-            <PlayerCard 
-              player={item} 
-              rank={index + 1} 
-              isTopPlayer={index === 0 && item.balance > 0} 
+            <PlayerCard
+              player={item}
+              rank={index + 1}
+              isTopPlayer={index === 0 && item.balance > 0}
             />
           </TouchableOpacity>
         )}
         contentContainerStyle={styles.list}
       />
-      
+
       {isAdding ? (
         <View style={styles.addPlayerContainer}>
           <TextInput

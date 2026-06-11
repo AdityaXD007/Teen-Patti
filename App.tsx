@@ -28,7 +28,7 @@ Sentry.init({
 export default Sentry.wrap(function App() {
   useEffect(() => {
     useStore.getState().initializeAuth();
-    
+
     // Log app open to Firebase Analytics
     const logAppOpen = async () => {
       try {

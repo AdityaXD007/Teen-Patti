@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Dimensions, Modal, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import LottieView from 'lottie-react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../constants/theme';
@@ -20,10 +21,21 @@ export const SessionsScreen = ({ navigation }: any) => {
   const [isScannerVisible, setIsScannerVisible] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [permission, requestPermission] = useCameraPermissions();
+  const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     loadSessions();
   }, []);
+
+  useEffect(() => {
+    if (sessions.length > 0) {
+      setLoading(false);
+    }
+    // Also stop loading after a timeout in case there are genuinely 0 sessions
+    const timer = setTimeout(() => setLoading(false), 2000);
+    return () => clearTimeout(timer);
+  }, [sessions]);
 
   const confirmDelete = (sessionId: string) => {
     Alert.alert(
@@ -115,6 +127,19 @@ export const SessionsScreen = ({ navigation }: any) => {
     </TouchableOpacity>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LottieView
+          source={require('../assets/animations/cardflip.json')}
+          autoPlay={true}
+          loop={true}
+          style={{ width: 80, height: 80, alignSelf: 'center' }}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -131,7 +156,7 @@ export const SessionsScreen = ({ navigation }: any) => {
         ListEmptyComponent={<EmptyState icon="cards-playing-outline" message="No tables yet. Create or join a game." />}
       />
 
-      <View style={styles.actionButtons}>
+      <View style={[styles.actionButtons, { bottom: Math.max(theme.spacing.xl, insets.bottom + theme.spacing.md) }]}>
         <TouchableOpacity
           style={styles.actionBtn}
           onPress={() => {

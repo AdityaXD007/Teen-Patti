@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import LottieView from 'lottie-react-native';
 import { theme } from '../constants/theme';
 import { useStore } from '../store/useStore';
 
@@ -8,6 +10,8 @@ export const AddRoundTab = ({ route, navigation }: any) => {
   const { sessionId } = route.params;
   const session = useStore(state => state.sessions.find(s => s.id === sessionId));
   const addRound = useStore(state => state.addRound);
+  const insets = useSafeAreaInsets();
+  const confettiRef = useRef<LottieView>(null);
 
   const [winnerId, setWinnerId] = useState<string | null>(null);
   const [amountStr, setAmountStr] = useState('');
@@ -16,6 +20,7 @@ export const AddRoundTab = ({ route, navigation }: any) => {
 
   const handleSetWinner = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    console.log('Setting winner:', id);
     setWinnerId(id);
   };
 
@@ -23,10 +28,11 @@ export const AddRoundTab = ({ route, navigation }: any) => {
   const autoLoserIds = session.players.filter(p => p.id !== winnerId).map(p => p.id);
   const isValid = winnerId && autoLoserIds.length > 0 && !isNaN(amount) && amount > 0;
 
-  const handleAddRound = () => {
+  const handleAddRound = async () => {
     if (isValid && session.players.length >= 2) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      addRound(sessionId, winnerId, autoLoserIds, amount);
+      await addRound(sessionId, winnerId, autoLoserIds, amount);
+      confettiRef.current?.play();
       setWinnerId(null);
       setAmountStr('');
       Alert.alert('Success', 'Round added successfully');
@@ -39,7 +45,7 @@ export const AddRoundTab = ({ route, navigation }: any) => {
   const actualAmount = splitAmount * autoLoserIds.length;
 
   return (
-    <KeyboardAvoidingView 
+    <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={100}
@@ -48,18 +54,20 @@ export const AddRoundTab = ({ route, navigation }: any) => {
         <Text style={styles.label}>Who won?</Text>
         <View style={styles.chipsContainer}>
           {session.players.map(p => (
-            <TouchableOpacity
-              key={p.id}
-              style={[
-                styles.chip,
-                winnerId === p.id && styles.chipWinner
-              ]}
-              onPress={() => handleSetWinner(p.id)}
-            >
-              <Text style={[styles.chipText, winnerId === p.id && styles.chipTextSelected]}>
-                {p.name}
-              </Text>
-            </TouchableOpacity>
+            <View key={p.id}>
+              <TouchableOpacity
+                key={p.id}
+                style={[
+                  styles.chip,
+                  winnerId === p.id && styles.chipWinner
+                ]}
+                onPress={() => handleSetWinner(p.id)}
+              >
+                <Text style={[styles.chipText, winnerId === p.id && styles.chipTextSelected]}>
+                  {p.name}
+                </Text>
+              </TouchableOpacity>
+            </View>
           ))}
         </View>
 
@@ -98,13 +106,13 @@ export const AddRoundTab = ({ route, navigation }: any) => {
         {isValid && (
           <View style={styles.previewBox}>
             <Text style={styles.previewText}>
-              <Text style={{color: theme.colors.winGreen}}>{getWinnerName()}</Text> wins Rs. {amount}
+              <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text> wins Rs. {amount}
             </Text>
           </View>
         )}
 
       </ScrollView>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, theme.spacing.md) }]}>
         <TouchableOpacity
           style={[styles.addButton, !isValid && styles.addButtonDisabled]}
           onPress={handleAddRound}
@@ -114,6 +122,15 @@ export const AddRoundTab = ({ route, navigation }: any) => {
             Add Round
           </Text>
         </TouchableOpacity>
+      </View>
+      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <LottieView
+          ref={confettiRef}
+          source={require('../assets/animations/confetti.json')}
+          autoPlay={false}
+          loop={false}
+          style={{ width: '100%', height: '100%', zIndex: 99 }}
+        />
       </View>
     </KeyboardAvoidingView>
   );
