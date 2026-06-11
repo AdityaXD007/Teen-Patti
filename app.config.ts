@@ -38,7 +38,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: {
       ...config.android,
       googleServicesFile: './google-services.json',
-      versionCode: 41,
       runtimeVersion: '1.0.0',
       adaptiveIcon: {
         ...config.android?.adaptiveIcon,
@@ -50,7 +49,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     web: {
       ...config.web,
       bundler: 'metro',
-      output: 'static',
+      output: 'single',
     },
     plugins: [
          "@react-native-firebase/app",

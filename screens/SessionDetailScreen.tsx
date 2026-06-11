@@ -99,7 +99,7 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
                 }}
                 style={{ paddingRight: theme.spacing.sm }}
               >
-                <MaterialCommunityIcons name="qrcode-scan" size={24} color={theme.colors.accent} />
+                <MaterialCommunityIcons name="share-variant" size={24} color={theme.colors.accent} />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -139,7 +139,7 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
       <Modal visible={isShareModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Share Table</Text>
+            <Text style={styles.modalTitle}>Share Session</Text>
             <Text style={styles.modalSubtitle}>Scan this QR code to join</Text>
 
             <View style={styles.qrContainer}>
@@ -150,7 +150,7 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
                 backgroundColor={theme.colors.textPrimary}
               />
             </View>
-
+            <Text style={styles.modalSubtitle}>OR</Text>
             <Text style={styles.codeText}>{session.joinCode}</Text>
 
             <TouchableOpacity style={styles.closeBtn} onPress={() => {
