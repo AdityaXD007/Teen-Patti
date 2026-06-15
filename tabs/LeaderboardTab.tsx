@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Text, TextInput, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Text, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { PlayerCard } from '../components/PlayerCard';
@@ -10,6 +11,7 @@ export const LeaderboardTab = ({ route }: any) => {
   const addPlayer = useStore(state => state.addPlayer);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const removePlayer = useStore(state => state.removePlayer);
 
@@ -41,7 +43,11 @@ export const LeaderboardTab = ({ route }: any) => {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior="padding"
+      keyboardVerticalOffset={100}
+    >
       <FlatList
         data={sortedPlayers}
         keyExtractor={p => p.id}
@@ -57,31 +63,33 @@ export const LeaderboardTab = ({ route }: any) => {
         contentContainerStyle={styles.list}
       />
 
-      {isAdding ? (
-        <View style={styles.addPlayerContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder="Player name"
-            placeholderTextColor={theme.colors.textSecondary}
-            value={newPlayerName}
-            onChangeText={setNewPlayerName}
-            autoFocus
-          />
-          <View style={styles.addPlayerActions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsAdding(false)}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleAddPlayer}>
-              <Text style={styles.saveText}>Save</Text>
-            </TouchableOpacity>
+      <View style={{ paddingBottom: Math.max(insets.bottom, theme.spacing.sm) }}>
+        {isAdding ? (
+          <View style={[styles.addPlayerContainer, { marginBottom: theme.spacing.sm }]}>
+            <TextInput
+              style={styles.input}
+              placeholder="Player name"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={newPlayerName}
+              onChangeText={setNewPlayerName}
+              autoFocus
+            />
+            <View style={styles.addPlayerActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsAdding(false)}>
+                <Text style={styles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleAddPlayer}>
+                <Text style={styles.saveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      ) : (
-        <TouchableOpacity style={styles.addButton} onPress={() => setIsAdding(true)}>
-          <Text style={styles.addButtonText}>Add Player</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+        ) : (
+          <TouchableOpacity style={[styles.addButton, { marginBottom: theme.spacing.sm }]} onPress={() => setIsAdding(true)}>
+            <Text style={styles.addButtonText}>Add Player</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 

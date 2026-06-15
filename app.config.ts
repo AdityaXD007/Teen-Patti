@@ -26,14 +26,23 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     icon: './assets/icon.png',
     scheme: scheme,
     userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
+    newArchEnabled: false,
     ios: {
       buildNumber: '1',
       usesAppleSignIn: true,
       supportsTablet: true,
       runtimeVersion: runtimeVersion,
-      bundleIdentifier: bundleIdentifier,
+      bundleIdentifier: 'com.aditya.teenpatti',
+      googleServicesFile: './GoogleService-Info.plist',
       associatedDomains: ['applinks:teenpattitracker.com'],
+      infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
+      },
+      icon: {
+        dark: "./assets/ios-dark.png",
+        light: "./assets/ios-light.png",
+        tinted: "./assets/ios-tinted.png",
+      },
     },
     android: {
       ...config.android,
@@ -42,7 +51,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       googleServicesFile: './google-services.json',
       adaptiveIcon: {
         ...config.android?.adaptiveIcon,
-        foregroundImage: './assets/adaptive-icon.png',
+        foregroundImage: './assets/icon.png',
         backgroundColor: '#FFFFFF',
       },
       edgeToEdgeEnabled: true,
@@ -55,6 +64,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     plugins: [
       "@react-native-firebase/app",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            useFrameworks: "static"
+          }
+        }
+      ],
       [
         'expo-splash-screen',
         {
