@@ -26,23 +26,24 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     icon: './assets/icon.png',
     scheme: scheme,
     userInterfaceStyle: 'automatic',
-    newArchEnabled: false,
+    newArchEnabled: true,
     ios: {
-      buildNumber: '1',
+      buildNumber: '2',
       usesAppleSignIn: true,
       supportsTablet: true,
       runtimeVersion: runtimeVersion,
-      bundleIdentifier: 'com.aditya.teenpatti',
+      bundleIdentifier: bundleIdentifier,
       googleServicesFile: './GoogleService-Info.plist',
       associatedDomains: ['applinks:teenpattitracker.com'],
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
+        NSUserTrackingUsageDescription: "This identifier will be used to deliver personalized ads and for analytics purposes to improve the app.",
       },
       icon: {
-        dark: "./assets/ios-dark.png",
-        light: "./assets/ios-light.png",
-        tinted: "./assets/ios-tinted.png",
-      },
+        dark: "./assets/ios-dark.png",
+        light: "./assets/ios-light.png",
+        tinted: "./assets/ios-tinted.png",
+      },
     },
     android: {
       ...config.android,
@@ -64,14 +65,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     plugins: [
       "@react-native-firebase/app",
-      [
-        "expo-build-properties",
-        {
-          "ios": {
-            useFrameworks: "static"
-          }
-        }
-      ],
+      "./plugins/withFirebaseModularHeaders.js",
       [
         'expo-splash-screen',
         {
@@ -85,11 +79,19 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         "@sentry/react-native/expo",
         {
           "url": "https://sentry.io/",
-          "project": "react-native",
-          "organization": "aditya-ts"
+          "project": "teen-patti",
+          "organization": "everest-technologies"
         }
       ],
       "@react-native-firebase/analytics",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Teen Patti Tracker to access your camera.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ]
     ],
     extra: {
       router: {},
@@ -132,7 +134,7 @@ export const getDynamicAppConfig = (
   }
   if (environment === 'preview') {
     return {
-      name: `${APP_NAME} (Prev)`,
+      name: APP_NAME,
       bundleIdentifier: `${BUNDLE_IDENTIFIER}.prev`,
       packageName: `${PACKAGE_NAME}.prev`,
       scheme: `${SCHEME}-prev`,
@@ -142,7 +144,7 @@ export const getDynamicAppConfig = (
     }
   }
   return {
-    name: `${APP_NAME} (Dev)`,
+    name: APP_NAME,
     bundleIdentifier: `${BUNDLE_IDENTIFIER}.dev`,
     packageName: `${PACKAGE_NAME}.dev`,
     scheme: `${SCHEME}-dev`,

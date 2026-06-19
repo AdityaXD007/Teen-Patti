@@ -6,6 +6,8 @@ import { theme } from '../constants/theme';
 import { SessionsScreen } from '../screens/SessionsScreen';
 import { CreateSessionScreen } from '../screens/CreateSessionScreen';
 import { SessionDetailScreen } from '../screens/SessionDetailScreen';
+import { SupportScreen } from '../screens/SupportScreen';
+import { WebViewScreen } from '../screens/WebViewScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -53,7 +55,27 @@ export const RootNavigator = () => {
             component={CreateSessionScreen} 
             options={{ headerShown: false }} 
           />
+          <Stack.Screen 
+            name="Support" 
+            component={SupportScreen} 
+            options={{
+              headerShown: true,
+              title: 'Support',
+              headerStyle: { backgroundColor: theme.colors.surface },
+              headerTintColor: theme.colors.textPrimary,
+            }} 
+          />
         </Stack.Group>
+        <Stack.Screen 
+          name="WebView" 
+          component={WebViewScreen} 
+          options={({ route }: any) => ({
+            headerShown: true,
+            title: route.params?.title || 'Page',
+            headerStyle: { backgroundColor: theme.colors.surface },
+            headerTintColor: theme.colors.textPrimary,
+          })} 
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -1,13 +1,15 @@
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { RootNavigator } from './navigation/RootNavigator';
 import { useStore } from './store/useStore';
 import * as Sentry from '@sentry/react-native';
 import analytics from '@react-native-firebase/analytics';
 
 Sentry.init({
-  dsn: 'https://99997c721fe140ca0a33e12ebe347edc@o4511540221444096.ingest.us.sentry.io/4511540222296064',
+  dsn: 'https://0873552e1110a69dab109c6600593381@o4506500963041280.ingest.us.sentry.io/4511590910263296',
 
   // Adds more context data to events (IP address, cookies, user, etc.)
   // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
@@ -41,9 +43,13 @@ export default Sentry.wrap(function App() {
   }, []);
 
   return (
-    <SafeAreaProvider style={{ flex: 1, backgroundColor: '#0D0D0D' }}>
-      <StatusBar style="light" />
-      <RootNavigator />
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <BottomSheetModalProvider>
+        <SafeAreaProvider style={{ flex: 1, backgroundColor: '#0D0D0D' }}>
+          <StatusBar style="light" />
+          <RootNavigator />
+        </SafeAreaProvider>
+      </BottomSheetModalProvider>
+    </GestureHandlerRootView>
   );
 });

@@ -20,6 +20,7 @@ export interface Round {
   amount: number;
   splitAmount: number;
   timestamp: number;
+  editedAt?: number;
 }
 
 export interface Session {
@@ -42,10 +43,12 @@ interface StoreState {
   createSession: (name: string, playerNames: string[]) => Promise<void>;
   joinSession: (code: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
+  leaveSession: (sessionId: string) => Promise<void>;
   addPlayer: (sessionId: string, playerName: string) => Promise<void>;
   removePlayer: (sessionId: string, playerId: string) => Promise<void>;
   addRound: (sessionId: string, winnerId: string, loserIds: string[], amount: number) => Promise<void>;
   deleteRound: (sessionId: string, roundId: string) => Promise<void>;
+  editRound: (sessionId: string, roundId: string, newWinnerId: string, newLoserIds: string[], newAmount: number) => Promise<void>;
 }
 
 // Keep track of active Firebase listeners
@@ -169,7 +172,8 @@ export const useStore = create<StoreState>((set, get) => ({
       rounds: [],
     };
 
-    await setDoc(doc(db, 'sessions', sessionId), newSession);
+    setDoc(doc(db, 'sessions', sessionId), newSession)
+      .catch(err => console.error('[Firestore] setDoc failed (createSession):', err));
     await addMySessionId(sessionId);
     get().loadSessions(); // Setup listener for the new session
   },
@@ -192,8 +196,21 @@ export const useStore = create<StoreState>((set, get) => ({
 
   deleteSession: async (sessionId) => {
     // Delete from backend
-    await deleteDoc(doc(db, 'sessions', sessionId));
+    deleteDoc(doc(db, 'sessions', sessionId))
+      .catch(err => console.error('[Firestore] deleteDoc failed (deleteSession):', err));
     // Remove locally
+    await removeMySessionId(sessionId);
+    
+    if (unsubscribes[sessionId]) {
+      unsubscribes[sessionId]();
+      delete unsubscribes[sessionId];
+    }
+    
+    get().loadSessions();
+  },
+
+  leaveSession: async (sessionId) => {
+    // Remove locally only
     await removeMySessionId(sessionId);
     
     if (unsubscribes[sessionId]) {
@@ -219,7 +236,8 @@ export const useStore = create<StoreState>((set, get) => ({
       ],
     };
 
-    await setDoc(doc(db, 'sessions', sessionId), updatedSession);
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .catch(err => console.error('[Firestore] setDoc failed (addPlayer):', err));
   },
 
   removePlayer: async (sessionId, playerId) => {
@@ -231,7 +249,8 @@ export const useStore = create<StoreState>((set, get) => ({
       players: session.players.filter(p => p.id !== playerId),
     };
 
-    await setDoc(doc(db, 'sessions', sessionId), updatedSession);
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .catch(err => console.error('[Firestore] setDoc failed (removePlayer):', err));
   },
 
   addRound: async (sessionId, winnerId, loserIds, amount) => {
@@ -264,7 +283,8 @@ export const useStore = create<StoreState>((set, get) => ({
       players: updatedPlayers,
     };
 
-    await setDoc(doc(db, 'sessions', sessionId), updatedSession);
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .catch(err => console.error('[Firestore] setDoc failed (addRound):', err));
   },
 
   deleteRound: async (sessionId, roundId) => {
@@ -287,6 +307,52 @@ export const useStore = create<StoreState>((set, get) => ({
       players: updatedPlayers,
     };
 
-    await setDoc(doc(db, 'sessions', sessionId), updatedSession);
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .catch(err => console.error('[Firestore] setDoc failed (deleteRound):', err));
+  },
+
+  editRound: async (sessionId, roundId, newWinnerId, newLoserIds, newAmount) => {
+    if (newAmount <= 0 || newLoserIds.length === 0) return;
+
+    const session = get().sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    const oldRound = session.rounds.find(r => r.id === roundId);
+    if (!oldRound) return;
+
+    // Reverse old round's balance impact
+    let updatedPlayers = session.players.map(player => {
+      if (player.id === oldRound.winnerId) {
+        return { ...player, balance: player.balance - oldRound.amount };
+      }
+      return player;
+    });
+
+    // Apply new round's balance impact
+    updatedPlayers = updatedPlayers.map(player => {
+      if (player.id === newWinnerId) {
+        return { ...player, balance: player.balance + newAmount };
+      }
+      return player;
+    });
+
+    const editedRound: Round = {
+      ...oldRound,
+      winnerId: newWinnerId,
+      winnerName: session.players.find(p => p.id === newWinnerId)?.name || 'Unknown',
+      loserIds: newLoserIds,
+      loserNames: newLoserIds.map(id => session.players.find(p => p.id === id)?.name || 'Unknown'),
+      amount: newAmount,
+      editedAt: Date.now(),
+    };
+
+    const updatedSession = {
+      ...session,
+      rounds: session.rounds.map(r => r.id === roundId ? editedRound : r),
+      players: updatedPlayers,
+    };
+
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .catch(err => console.error('[Firestore] setDoc failed (editRound):', err));
   },
 }));

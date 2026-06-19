@@ -4,17 +4,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import LottieView from 'lottie-react-native';
 import { theme } from '../constants/theme';
-import { useStore } from '../store/useStore';
+import { useStore, Round } from '../store/useStore';
+import { RoundItem } from '../components/RoundItem';
+import { EditRoundModal } from '../components/EditRoundModal';
 
 export const AddRoundTab = ({ route, navigation }: any) => {
   const { sessionId } = route.params;
   const session = useStore(state => state.sessions.find(s => s.id === sessionId));
   const addRound = useStore(state => state.addRound);
+  const editRound = useStore(state => state.editRound);
+  const deleteRound = useStore(state => state.deleteRound);
   const insets = useSafeAreaInsets();
   const confettiRef = useRef<LottieView>(null);
 
   const [winnerId, setWinnerId] = useState<string | null>(null);
   const [amountStr, setAmountStr] = useState('');
+  const [editingRound, setEditingRound] = useState<Round | null>(null);
 
   if (!session) return null;
 
@@ -36,13 +41,38 @@ export const AddRoundTab = ({ route, navigation }: any) => {
       setWinnerId(null);
       setAmountStr('');
       Alert.alert('Success', 'Round added successfully');
-      navigation.navigate('Leaderboard');
     }
   };
 
   const getWinnerName = () => session.players.find(p => p.id === winnerId)?.name;
   const splitAmount = isValid ? Math.round(amount / autoLoserIds.length) : 0;
   const actualAmount = splitAmount * autoLoserIds.length;
+
+  const handleEditSave = (newWinnerId: string, newAmount: number) => {
+    if (!editingRound) return;
+    const newLoserIds = session.players.filter(p => p.id !== newWinnerId).map(p => p.id);
+    editRound(sessionId, editingRound.id, newWinnerId, newLoserIds, newAmount);
+    setEditingRound(null);
+  };
+
+  const confirmDeleteRound = (roundId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Alert.alert(
+      'Delete Round',
+      'Are you sure? Player balances will be reversed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            deleteRound(sessionId, roundId);
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -111,6 +141,20 @@ export const AddRoundTab = ({ route, navigation }: any) => {
           </View>
         )}
 
+        {session.rounds.length > 0 && (
+          <View style={styles.recentRoundsSection}>
+            <Text style={styles.recentRoundsTitle}>Recent Rounds</Text>
+            {session.rounds.slice(0, 5).map((round) => (
+              <RoundItem
+                key={round.id}
+                round={round}
+                onEdit={() => setEditingRound(round)}
+                onDelete={() => confirmDeleteRound(round.id)}
+              />
+            ))}
+          </View>
+        )}
+
       </ScrollView>
       <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, theme.spacing.md) }]}>
         <TouchableOpacity
@@ -132,6 +176,13 @@ export const AddRoundTab = ({ route, navigation }: any) => {
           style={{ width: '100%', height: '100%', zIndex: 99 }}
         />
       </View>
+      <EditRoundModal
+        visible={!!editingRound}
+        round={editingRound}
+        players={session.players}
+        onSave={handleEditSave}
+        onCancel={() => setEditingRound(null)}
+      />
     </KeyboardAvoidingView>
   );
 };
@@ -235,6 +286,19 @@ const styles = StyleSheet.create({
     ...theme.typography.body,
     textAlign: 'center',
     lineHeight: 24,
+  },
+  recentRoundsSection: {
+    marginTop: theme.spacing.xl,
+    paddingTop: theme.spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  recentRoundsTitle: {
+    ...theme.typography.caption,
+    color: theme.colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: theme.spacing.xs,
   },
   footer: {
     padding: theme.spacing.md,

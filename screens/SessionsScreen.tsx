@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Dimensions, Modal, TextInput } from 'react-native';
 import LottieView from 'lottie-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { theme } from '../constants/theme';
 import { useStore, Session } from '../store/useStore';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { EmptyState } from '../components/EmptyState';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
@@ -15,37 +16,70 @@ export const SessionsScreen = ({ navigation }: any) => {
   const sessions = useStore(state => state.sessions);
   const loadSessions = useStore(state => state.loadSessions);
   const deleteSession = useStore(state => state.deleteSession);
+  const leaveSession = useStore(state => state.leaveSession);
   const joinSession = useStore(state => state.joinSession);
+  const uid = useStore(state => state.uid);
 
   const [isJoinModalVisible, setIsJoinModalVisible] = useState(false);
   const [isScannerVisible, setIsScannerVisible] = useState(false);
+  const [isScanned, setIsScanned] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [permission, requestPermission] = useCameraPermissions();
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
+  const hasCheckedLastSession = useRef(false);
 
   useEffect(() => {
     loadSessions();
   }, []);
 
   useEffect(() => {
+    const checkLastSession = async () => {
+      if (hasCheckedLastSession.current) return;
+
+      const lastId = await AsyncStorage.getItem('lastViewedSessionId');
+      if (lastId && sessions.find(s => s.id === lastId)) {
+        hasCheckedLastSession.current = true;
+        navigation.navigate('SessionDetail', { sessionId: lastId });
+      } else {
+        hasCheckedLastSession.current = true;
+      }
+    };
+
     if (sessions.length > 0) {
       setLoading(false);
+      checkLastSession();
     }
     // Also stop loading after a timeout in case there are genuinely 0 sessions
-    const timer = setTimeout(() => setLoading(false), 2000);
+    const timer = setTimeout(() => {
+      setLoading(false);
+      hasCheckedLastSession.current = true;
+    }, 2000);
     return () => clearTimeout(timer);
   }, [sessions]);
 
-  const confirmDelete = (sessionId: string) => {
-    Alert.alert(
-      'Delete Session',
-      'Are you sure you want to remove this session? If you are the last person, it will be lost.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: () => deleteSession(sessionId) }
-      ]
-    );
+  const handleSessionAction = (item: Session) => {
+    const isCreator = !item.creatorId || item.creatorId === uid;
+
+    if (isCreator) {
+      Alert.alert(
+        'Delete Session',
+        'Are you sure you want to permanently delete this session? This will remove it for everyone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => deleteSession(item.id) }
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Leave Session',
+        'Are you sure you want to leave this table? You can rejoin later with the code.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Leave', style: 'destructive', onPress: () => leaveSession(item.id) }
+        ]
+      );
+    }
   };
 
   const executeJoin = async (code: string) => {
@@ -73,15 +107,24 @@ export const SessionsScreen = ({ navigation }: any) => {
         return;
       }
     }
-    setIsScannerVisible(true);
+    // iOS does NOT support multiple simultaneous Modals.
+    // Close the Join modal first, wait for dismiss animation, then open scanner.
+    setIsJoinModalVisible(false);
+    setIsScanned(false);
+    setTimeout(() => {
+      setIsScannerVisible(true);
+    }, 400);
   };
 
   const handleBarcodeScanned = ({ data }: { data: string }) => {
+    if (isScanned) return;
+    setIsScanned(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setIsScannerVisible(false);
     // Assuming join codes are 6 chars, or just attempt to join with the string
-    setJoinCode(data);
-    setTimeout(() => executeJoin(data), 300);
+    const cleanedData = data.trim();
+    setJoinCode(cleanedData);
+    setTimeout(() => executeJoin(cleanedData), 300);
   };
 
   const getSuitIcon = (index: number) => {
@@ -89,43 +132,55 @@ export const SessionsScreen = ({ navigation }: any) => {
     return suits[index % suits.length];
   };
 
-  const renderItem = ({ item, index }: { item: Session, index: number }) => (
-    <TouchableOpacity
-      style={styles.card}
-      onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        navigation.navigate('SessionDetail', { sessionId: item.id });
-      }}
-      onLongPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        confirmDelete(item.id);
-      }}
-    >
-      <View style={styles.cardInner}>
-        <View style={styles.cardHeader}>
-          <MaterialCommunityIcons
-            name={getSuitIcon(index)}
-            size={24}
-            color={index % 2 === 0 ? theme.colors.textSecondary : theme.colors.lossRed}
-          />
-          <Text style={styles.sessionDate}>
-            {new Date(item.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
-        <Text style={styles.sessionName}>{item.name}</Text>
-        <View style={styles.stats}>
-          <View style={styles.statChip}>
-            <MaterialCommunityIcons name="account-group" size={16} color={theme.colors.accent} />
-            <Text style={styles.statText}>{item.players.length} Players</Text>
+  const renderItem = ({ item, index }: { item: Session, index: number }) => {
+    const isCreator = !item.creatorId || item.creatorId === uid;
+
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          AsyncStorage.setItem('lastViewedSessionId', item.id);
+          navigation.navigate('SessionDetail', { sessionId: item.id });
+        }}
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          handleSessionAction(item);
+        }}
+      >
+        <View style={styles.cardInner}>
+          <View style={styles.cardHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm }}>
+              <MaterialCommunityIcons
+                name={getSuitIcon(index)}
+                size={24}
+                color={index % 2 === 0 ? theme.colors.textSecondary : theme.colors.lossRed}
+              />
+              <Text style={styles.sessionDate}>
+                {new Date(item.createdAt).toLocaleDateString()}
+              </Text>
+            </View>
+            <View style={[styles.roleBadge, { backgroundColor: isCreator ? 'rgba(201, 168, 76, 0.15)' : 'rgba(255, 255, 255, 0.1)' }]}>
+              <Text style={[styles.roleBadgeText, { color: isCreator ? theme.colors.accent : theme.colors.textSecondary }]}>
+                {isCreator ? 'Created' : 'Joined'}
+              </Text>
+            </View>
           </View>
-          <View style={styles.statChip}>
-            <Text style={styles.statLabel}>Total Rounds:</Text>
-            <Text style={styles.statText}>{item.rounds.length}</Text>
+          <Text style={styles.sessionName}>{item.name}</Text>
+          <View style={styles.stats}>
+            <View style={styles.statChip}>
+              <MaterialCommunityIcons name="account-group" size={16} color={theme.colors.accent} />
+              <Text style={styles.statText}>{item.players.length} Players</Text>
+            </View>
+            <View style={styles.statChip}>
+              <Text style={styles.statLabel}>Total Rounds:</Text>
+              <Text style={styles.statText}>{item.rounds.length}</Text>
+            </View>
           </View>
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   if (loading) {
     return (
@@ -143,9 +198,21 @@ export const SessionsScreen = ({ navigation }: any) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <MaterialCommunityIcons name="cards-playing-outline" size={32} color={theme.colors.accent} />
-        <Text style={styles.title}>Teen Patti Tracker</Text>
-        <MaterialCommunityIcons name="cards-playing-outline" size={32} color={theme.colors.accent} style={{ transform: [{ scaleX: -1 }] }} />
+        <View style={styles.headerCenter}>
+          <MaterialCommunityIcons name="cards-playing-outline" size={32} color={theme.colors.accent} />
+          <Text style={styles.title}>Teen Patti Tracker</Text>
+          <MaterialCommunityIcons name="cards-playing-outline" size={32} color={theme.colors.accent} style={{ transform: [{ scaleX: -1 }] }} />
+        </View>
+        <TouchableOpacity
+          style={styles.supportButton}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigation.navigate('Support');
+          }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <MaterialCommunityIcons name="lifebuoy" size={24} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -196,7 +263,7 @@ export const SessionsScreen = ({ navigation }: any) => {
                 autoCapitalize="characters"
                 maxLength={6}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={{ marginLeft: theme.spacing.md, padding: theme.spacing.sm, backgroundColor: theme.colors.surfaceElevated, borderRadius: theme.borderRadius.md }}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -232,23 +299,25 @@ export const SessionsScreen = ({ navigation }: any) => {
             }}
             onBarcodeScanned={handleBarcodeScanned}
           />
-          
-          <SafeAreaView style={{ position: 'absolute', top: 0, width: '100%', flexDirection: 'row', justifyContent: 'flex-end', padding: theme.spacing.md }}>
-            <TouchableOpacity 
-              style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: theme.spacing.md, borderRadius: 50 }}
+
+          <SafeAreaView style={{ position: 'absolute', top: 0, width: '100%', flexDirection: 'row', justifyContent: 'flex-end', padding: theme.spacing.md, zIndex: 10 }} pointerEvents="box-none">
+            <TouchableOpacity
+              style={{ backgroundColor: 'rgba(0,0,0,0.6)', padding: theme.spacing.md, borderRadius: 50, elevation: 10, zIndex: 11 }}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setIsScannerVisible(false);
+                // Reopen join modal after scanner closes
+                setTimeout(() => setIsJoinModalVisible(true), 400);
               }}
             >
               <MaterialCommunityIcons name="close" size={28} color="#FFF" />
             </TouchableOpacity>
           </SafeAreaView>
-          
-          <View style={{ position: 'absolute', top: '20%', width: '100%', alignItems: 'center' }}>
-             <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 10 }}>
-                Scan Table QR Code
-             </Text>
+
+          <View style={{ position: 'absolute', top: '20%', width: '100%', alignItems: 'center', zIndex: 10 }} pointerEvents="none">
+            <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold', backgroundColor: 'rgba(0,0,0,0.6)', padding: 10, borderRadius: 10, overflow: 'hidden' }}>
+              Scan Table QR Code
+            </Text>
           </View>
         </View>
       </Modal>
@@ -268,6 +337,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: theme.spacing.md,
     paddingVertical: theme.spacing.lg,
+    position: 'relative',
+  },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  supportButton: {
+    position: 'absolute',
+    right: theme.spacing.md,
+    padding: theme.spacing.xs,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.surfaceElevated,
   },
   title: {
     ...theme.typography.title,
@@ -313,6 +394,16 @@ const styles = StyleSheet.create({
   },
   sessionDate: {
     ...theme.typography.caption,
+  },
+  roleBadge: {
+    paddingHorizontal: theme.spacing.sm,
+    paddingVertical: 2,
+    borderRadius: theme.borderRadius.full,
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
   },
   stats: {
     flexDirection: 'row',

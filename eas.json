@@ -1,7 +1,6 @@
 {
   "cli": {
-    "version": ">= 14.7.2",
-    "appVersionSource": "remote"
+    "version": ">= 14.7.2"
   },
   "build": {
     "development": {
@@ -27,10 +26,16 @@
       "android": {
         "buildType": "apk"
       },
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "APP_ENV": "preview"
+      }
     },
     "production": {
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "APP_ENV": "production"
+      }
     }
   },
   "submit": {

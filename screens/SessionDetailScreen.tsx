@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TouchableOpacity, Alert, View, Modal, Text, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -6,6 +6,7 @@ import QRCode from 'react-native-qrcode-svg';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../constants/theme';
 import { useStore } from '../store/useStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { LeaderboardTab } from '../tabs/LeaderboardTab';
 import { AddRoundTab } from '../tabs/AddRoundTab';
@@ -17,7 +18,27 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
   const { sessionId } = route.params;
   const session = useStore(state => state.sessions.find(s => s.id === sessionId));
   const deleteSession = useStore(state => state.deleteSession);
+  const leaveSession = useStore(state => state.leaveSession);
+  const uid = useStore(state => state.uid);
   const [isShareModalVisible, setIsShareModalVisible] = useState(false);
+  const [initialTab, setInitialTab] = useState<string | null>(null);
+  const [tabLoading, setTabLoading] = useState(true);
+
+  const isCreator = session ? (!session.creatorId || session.creatorId === uid) : false;
+
+  useEffect(() => {
+    const loadLastTab = async () => {
+      try {
+        const lastTab = await AsyncStorage.getItem(`lastTab_${sessionId}`);
+        setInitialTab(lastTab || 'AddRound');
+      } catch {
+        setInitialTab('AddRound');
+      } finally {
+        setTabLoading(false);
+      }
+    };
+    loadLastTab();
+  }, [sessionId]);
 
   React.useEffect(() => {
     if (!session) {
@@ -25,28 +46,49 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
     }
   }, [session, navigation]);
 
-  if (!session) {
-    navigation.goBack();
+  if (!session || tabLoading) {
+    if (!session) {
+      navigation.goBack();
+    }
     return null;
   }
 
-  const confirmDelete = () => {
-    Alert.alert(
-      'Delete Game Table',
-      'Are you sure you want to delete this table? All history will be lost.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            deleteSession(sessionId);
-            navigation.goBack();
+  const handleSessionAction = () => {
+    if (isCreator) {
+      Alert.alert(
+        'Delete Game Table',
+        'Are you sure you want to permanently delete this table? This will remove it for everyone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              deleteSession(sessionId);
+              navigation.goBack();
+            }
           }
-        }
-      ]
-    );
+        ]
+      );
+    } else {
+      Alert.alert(
+        'Leave Game Table',
+        'Are you sure you want to leave this table? You can rejoin later with the code.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Leave',
+            style: 'destructive',
+            onPress: () => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              leaveSession(sessionId);
+              navigation.goBack();
+            }
+          }
+        ]
+      );
+    }
   };
 
   return (
@@ -103,9 +145,13 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
               </TouchableOpacity>
               <TouchableOpacity onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                confirmDelete();
+                handleSessionAction();
               }} style={{ paddingLeft: theme.spacing.sm, paddingRight: theme.spacing.md }}>
-                <MaterialCommunityIcons name="delete-outline" size={24} color={theme.colors.lossRed} />
+                <MaterialCommunityIcons
+                  name={isCreator ? "delete-outline" : "exit-run"}
+                  size={24}
+                  color={isCreator ? theme.colors.lossRed : theme.colors.textSecondary}
+                />
               </TouchableOpacity>
             </View>
           ),
@@ -114,14 +160,18 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
           tabPress: () => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           },
+          state: (e: any) => {
+            const state = e.data?.state;
+            if (state) {
+              const activeRoute = state.routes[state.index];
+              if (activeRoute?.name) {
+                AsyncStorage.setItem(`lastTab_${sessionId}`, activeRoute.name);
+              }
+            }
+          },
         }}
+        initialRouteName={initialTab || 'AddRound'}
       >
-        <Tab.Screen
-          name="Leaderboard"
-          component={LeaderboardTab}
-          initialParams={{ sessionId }}
-          options={{ title: 'Leaderboard' }}
-        />
         <Tab.Screen
           name="AddRound"
           component={AddRoundTab}
@@ -133,6 +183,12 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
           component={HistoryTab}
           initialParams={{ sessionId }}
           options={{ title: 'History' }}
+        />
+        <Tab.Screen
+          name="Leaderboard"
+          component={LeaderboardTab}
+          initialParams={{ sessionId }}
+          options={{ title: 'Leaderboard' }}
         />
       </Tab.Navigator>
 
