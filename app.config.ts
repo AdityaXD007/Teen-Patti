@@ -91,7 +91,17 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           "microphonePermission": false,
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.1.20",
+            "gradleVersion": "8.13",
+            "agpVersion": "8.7.3"
+          }
+        }
+      ],
     ],
     extra: {
       router: {},
