@@ -40,7 +40,7 @@ interface StoreState {
   initializeAuth: () => void;
   sessions: Session[];
   loadSessions: () => void;
-  createSession: (name: string, playerNames: string[]) => Promise<void>;
+  createSession: (name: string, playerNames: string[]) => Promise<string | undefined>;
   joinSession: (code: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
   leaveSession: (sessionId: string) => Promise<void>;
@@ -152,7 +152,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   createSession: async (name, playerNames) => {
     const trimmedName = name.trim();
-    if (!trimmedName || playerNames.length < 2) return;
+    if (!trimmedName || playerNames.length < 2) return undefined;
 
     const sessionId = uuid.v4() as string;
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -176,6 +176,7 @@ export const useStore = create<StoreState>((set, get) => ({
       .catch(err => console.error('[Firestore] setDoc failed (createSession):', err));
     await addMySessionId(sessionId);
     get().loadSessions(); // Setup listener for the new session
+    return sessionId;
   },
 
   joinSession: async (code: string) => {

@@ -12,32 +12,26 @@ const PACKAGE_NAME = 'com.techeverest.teenpattitracker'
 const SCHEME = 'teenpattitracker-app-scheme'
 
 export default ({ config }: ConfigContext): ExpoConfig => {
-  console.log(' - Building app for environment: ', process.env.APP_ENV)
-  const { name, bundleIdentifier, packageName, scheme, runtimeVersion } =
-    getDynamicAppConfig(
-      process.env.APP_ENV as 'development' | 'preview' | 'production'
-    )
   return {
     ...config,
-    name: name,
+    name: APP_NAME,
     version: '1.0.0',
     slug: PROJECT_SLUG,
     orientation: 'portrait',
     icon: './assets/icon.png',
-    scheme: scheme,
+    scheme: SCHEME,
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     ios: {
-      buildNumber: '2',
+      buildNumber: '4',
       usesAppleSignIn: true,
       supportsTablet: true,
-      runtimeVersion: runtimeVersion,
-      bundleIdentifier: bundleIdentifier,
+      runtimeVersion: '1.0.0',
+      bundleIdentifier: BUNDLE_IDENTIFIER,
       googleServicesFile: './GoogleService-Info.plist',
       associatedDomains: ['applinks:teenpattitracker.com'],
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
-        NSUserTrackingUsageDescription: "This identifier will be used to deliver personalized ads and for analytics purposes to improve the app.",
       },
       icon: {
         dark: "./assets/ios-dark.png",
@@ -47,7 +41,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       ...config.android,
-      versionCode: 41,
+      versionCode: 42,
       runtimeVersion: '1.0.0',
       googleServicesFile: './google-services.json',
       adaptiveIcon: {
@@ -56,7 +50,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         backgroundColor: '#FFFFFF',
       },
       edgeToEdgeEnabled: true,
-      package: packageName,
+      package: PACKAGE_NAME,
     },
     web: {
       bundler: 'metro',
@@ -64,6 +58,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       favicon: './assets/favicon.png',
     },
     plugins: [
+      "expo-font",
       "@react-native-firebase/app",
       "./plugins/withFirebaseModularHeaders.js",
       [
@@ -118,46 +113,5 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       fallbackToCacheTimeout: 0,
 
     }
-  }
-}
-
-// Get Dynamic App Config based on the environment
-export const getDynamicAppConfig = (
-  environment: 'development' | 'preview' | 'production'
-): {
-  name: string
-  bundleIdentifier: string
-  packageName: string
-  scheme: string
-  runtimeVersion:
-  | string
-  | { policy: 'appVersion' | 'sdkVersion' | 'nativeVersion' | 'fingerprint' }
-} => {
-  if (environment === 'production') {
-    return {
-      name: APP_NAME,
-      bundleIdentifier: BUNDLE_IDENTIFIER,
-      packageName: PACKAGE_NAME,
-      scheme: SCHEME,
-      runtimeVersion: '1.0.0',
-    }
-  }
-  if (environment === 'preview') {
-    return {
-      name: APP_NAME,
-      bundleIdentifier: `${BUNDLE_IDENTIFIER}.prev`,
-      packageName: `${PACKAGE_NAME}.prev`,
-      scheme: `${SCHEME}-prev`,
-      runtimeVersion: {
-        policy: 'appVersion',
-      },
-    }
-  }
-  return {
-    name: APP_NAME,
-    bundleIdentifier: `${BUNDLE_IDENTIFIER}.dev`,
-    packageName: `${PACKAGE_NAME}.dev`,
-    scheme: `${SCHEME}-dev`,
-    runtimeVersion: '1.0.0',
   }
 }

@@ -29,11 +29,15 @@ export const CreateSessionScreen = ({ navigation }: any) => {
     setPlayers(players.filter(p => p !== name));
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (sessionName.trim() && players.length >= 2) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      createSession(sessionName, players);
-      navigation.goBack();
+      const sessionId = await createSession(sessionName, players);
+      if (sessionId) {
+        navigation.replace('SessionDetail', { sessionId });
+      } else {
+        navigation.goBack();
+      }
     }
   };
 
