@@ -28,7 +28,7 @@ export const LeaderboardTab = ({ route }: any) => {
   };
 
   const handleLongPressPlayer = (playerId: string, playerName: string) => {
-    const hasHistory = session.rounds.some(r => r.winnerId === playerId || r.loserIds.includes(playerId));
+    const hasHistory = session.rounds.some(r => r.winnerId === playerId);
 
     Alert.alert(
       'Remove Player',

@@ -16,7 +16,7 @@ interface EditRoundModalProps {
   visible: boolean;
   round: Round | null;
   players: Player[];
-  onSave: (winnerId: string, amount: number) => void;
+  onSave: (winnerId: string, stake: number) => void;
   onCancel: () => void;
 }
 
@@ -29,7 +29,7 @@ export const EditRoundModal = ({ visible, round, players, onSave, onCancel }: Ed
   useEffect(() => {
     if (round && visible) {
       setWinnerId(round.winnerId);
-      setAmountStr(round.amount.toString());
+      setAmountStr(round.stake.toString());
       // Expand sheet
       bottomSheetRef.current?.present();
     } else {
@@ -129,7 +129,7 @@ export const EditRoundModal = ({ visible, round, players, onSave, onCancel }: Ed
         </ScrollView>
 
         {/* Amount input */}
-        <Text style={styles.label}>Amount</Text>
+        <Text style={styles.label}>Stake per player</Text>
         <View style={styles.amountContainer}>
           <Text style={styles.currencySymbol}>Rs. </Text>
           <TextInput
@@ -147,7 +147,11 @@ export const EditRoundModal = ({ visible, round, players, onSave, onCancel }: Ed
         {isValid && (
           <View style={styles.previewBox}>
             <Text style={styles.previewText}>
-              <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text> wins Rs. {amount}
+              <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text>
+              {' wins Rs. '}{amount * (round?.playerCount || 2)}
+            </Text>
+            <Text style={[styles.previewText, { marginTop: 4, fontSize: 13, color: theme.colors.textSecondary }]}>
+              Each player stakes Rs. {amount}
             </Text>
           </View>
         )}

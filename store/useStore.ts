@@ -4,6 +4,66 @@ import { db, auth } from '../firebaseConfig';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+// Backward-compat: normalize old-format rounds to new stake-based format.
+// Old format had: { amount, splitAmount, loserIds, loserNames }
+// New format has:  { stake, playerCount }
+const normalizeRound = (round: any): Round => {
+  if (round.stake !== undefined) return round as Round; // already new format
+
+  const playerCount = (round.loserIds?.length ?? 0) + 1;
+  const stake = round.splitAmount || (round.amount ? Math.round(round.amount / playerCount) : 0);
+
+  return {
+    id: round.id,
+    winnerId: round.winnerId,
+    winnerName: round.winnerName,
+    stake,
+    playerCount,
+    timestamp: round.timestamp,
+    ...(round.editedAt !== undefined && { editedAt: round.editedAt }),
+  };
+};
+
+const normalizeSession = (session: any): Session => {
+  const balanceMap: { [id: string]: number } = {};
+  for (const p of (session.players || [])) {
+    balanceMap[p.id] = 0;
+  }
+
+  const normalizedRounds = (session.rounds || []).map((r: any) => {
+    const normR = normalizeRound(r);
+    const stake = Number(normR.stake) || 0;
+    const playerCount = Number(normR.playerCount) || (session.players?.length ?? 2);
+
+    for (const p of (session.players || [])) {
+      if (p.id === normR.winnerId) {
+        balanceMap[p.id] += stake * (playerCount - 1);
+      } else {
+        // For old rounds, only deduct if they were explicitly a loser
+        if (r.loserIds) {
+          if (r.loserIds.includes(p.id)) {
+            balanceMap[p.id] -= stake;
+          }
+        } else {
+          // For new rounds, everyone else loses the stake
+          balanceMap[p.id] -= stake;
+        }
+      }
+    }
+    return { ...normR, stake, playerCount };
+  });
+
+  return {
+    ...session,
+    rounds: normalizedRounds,
+    players: (session.players || []).map((p: any) => ({
+      ...p,
+      balance: balanceMap[p.id] ?? 0,
+    })),
+  };
+};
 
 export interface Player {
   id: string;
@@ -15,10 +75,8 @@ export interface Round {
   id: string;
   winnerId: string;
   winnerName: string;
-  loserIds: string[];
-  loserNames: string[];
-  amount: number;
-  splitAmount: number;
+  stake: number;
+  playerCount: number;
   timestamp: number;
   editedAt?: number;
 }
@@ -46,9 +104,11 @@ interface StoreState {
   leaveSession: (sessionId: string) => Promise<void>;
   addPlayer: (sessionId: string, playerName: string) => Promise<void>;
   removePlayer: (sessionId: string, playerId: string) => Promise<void>;
-  addRound: (sessionId: string, winnerId: string, loserIds: string[], amount: number) => Promise<void>;
+  addRound: (sessionId: string, winnerId: string, stake: number) => Promise<void>;
   deleteRound: (sessionId: string, roundId: string) => Promise<void>;
-  editRound: (sessionId: string, roundId: string, newWinnerId: string, newLoserIds: string[], newAmount: number) => Promise<void>;
+  editRound: (sessionId: string, roundId: string, newWinnerId: string, newStake: number) => Promise<void>;
+  pendingNavigationSessionId: string | null;
+  setPendingNavigationSessionId: (id: string | null) => void;
 }
 
 // Keep track of active Firebase listeners
@@ -73,15 +133,31 @@ const addMySessionId = async (id: string) => {
 
 const removeMySessionId = async (id: string) => {
   let ids = await getMySessionIds();
+
   ids = ids.filter(i => i !== id);
   await AsyncStorage.setItem('mySessionIds', JSON.stringify(ids));
 };
 
-export const useStore = create<StoreState>((set, get) => ({
-  user: null,
+const ensureAuth = async () => {
+  if (auth.currentUser) return auth.currentUser.uid;
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user.uid;
+  } catch (error) {
+    console.error('ensureAuth failed:', error);
+    return null;
+  }
+};
+
+export const useStore = create<StoreState>()(
+  persist(
+    (set, get) => ({
+      user: null,
   uid: null,
   authInitialized: false,
   sessions: [],
+  pendingNavigationSessionId: null,
+  setPendingNavigationSessionId: (id) => set({ pendingNavigationSessionId: id }),
 
   initializeAuth: () => {
     // Only initialize once
@@ -113,35 +189,28 @@ export const useStore = create<StoreState>((set, get) => ({
     });
 
     if (mySessionIds.length === 0) {
-      set({ sessions: [] });
+      // Don't clear sessions here if using persist, as they might be loaded from storage
       return;
     }
 
-    // Accumulate sessions from individual listeners
-    const loadedSessions: { [id: string]: Session } = {};
-    const currentSessions = get().sessions;
-    currentSessions.forEach(s => {
-      if (mySessionIds.includes(s.id)) {
-        loadedSessions[s.id] = s;
-      }
-    });
-
-    const updateState = () => {
-      const sessionsArray = Object.values(loadedSessions).sort((a, b) => b.createdAt - a.createdAt);
-      set({ sessions: sessionsArray });
-    };
-
     mySessionIds.forEach(id => {
       if (!unsubscribes[id]) {
-        unsubscribes[id] = onSnapshot(doc(db, 'sessions', id), async (snapshot) => {
+        unsubscribes[id] = onSnapshot(doc(db, 'sessions', id), (snapshot) => {
           if (snapshot.exists()) {
-            loadedSessions[id] = snapshot.data() as Session;
-            updateState();
+            const normalized = normalizeSession(snapshot.data());
+            set((state) => {
+              const exists = state.sessions.some(s => s.id === id);
+              if (exists) {
+                return { sessions: state.sessions.map(s => s.id === id ? normalized : s) };
+              } else {
+                return { sessions: [...state.sessions, normalized].sort((a, b) => b.createdAt - a.createdAt) };
+              }
+            });
           } else {
-            // Session was deleted from backend
-            delete loadedSessions[id];
-            await removeMySessionId(id);
-            updateState();
+            // Only delete if it's explicitly deleted, but for now we won't auto-delete
+            // local sessions just because Firestore doesn't have them, to allow offline
+            // or local-only usage.
+            console.warn(`Session ${id} not found in Firestore. Keeping local copy.`);
           }
         }, (error) => {
           console.error(`Failed to listen to session ${id}`, error);
@@ -158,10 +227,9 @@ export const useStore = create<StoreState>((set, get) => ({
     const joinCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const uid = get().uid;
 
-    const newSession: Session = {
+    const newSession: any = {
       id: sessionId,
       joinCode,
-      creatorId: uid || undefined,
       name: trimmedName,
       createdAt: Date.now(),
       players: playerNames.map(pName => ({
@@ -172,9 +240,27 @@ export const useStore = create<StoreState>((set, get) => ({
       rounds: [],
     };
 
-    setDoc(doc(db, 'sessions', sessionId), newSession)
-      .catch(err => console.error('[Firestore] setDoc failed (createSession):', err));
+    if (uid) {
+      newSession.creatorId = uid;
+    }
+
+    // Optimistically update the state so navigation works instantly
+    set({ sessions: [newSession as Session, ...get().sessions] });
+
     await addMySessionId(sessionId);
+    
+    // Ensure we are authenticated before writing to avoid permission-denied rollbacks
+    await ensureAuth();
+
+    // Await Firestore write before setting up listeners, so the snapshot
+    // listener sees the document and doesn't remove the optimistic session.
+    try {
+      await setDoc(doc(db, 'sessions', sessionId), newSession);
+      console.log('[Firestore] write success (createSession)');
+    } catch (err: any) {
+      console.error('[Firestore] setDoc failed (createSession):', err.code, err.message, err);
+    }
+    
     get().loadSessions(); // Setup listener for the new session
     return sessionId;
   },
@@ -196,6 +282,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   deleteSession: async (sessionId) => {
+    await ensureAuth();
     // Delete from backend
     deleteDoc(doc(db, 'sessions', sessionId))
       .catch(err => console.error('[Firestore] deleteDoc failed (deleteSession):', err));
@@ -237,8 +324,12 @@ export const useStore = create<StoreState>((set, get) => ({
       ],
     };
 
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
     setDoc(doc(db, 'sessions', sessionId), updatedSession)
-      .catch(err => console.error('[Firestore] setDoc failed (addPlayer):', err));
+      .then(() => console.log('[Firestore] write success (addPlayer)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (addPlayer):', err.code, err.message, err));
   },
 
   removePlayer: async (sessionId, playerId) => {
@@ -250,32 +341,36 @@ export const useStore = create<StoreState>((set, get) => ({
       players: session.players.filter(p => p.id !== playerId),
     };
 
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
     setDoc(doc(db, 'sessions', sessionId), updatedSession)
-      .catch(err => console.error('[Firestore] setDoc failed (removePlayer):', err));
+      .then(() => console.log('[Firestore] write success (removePlayer)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (removePlayer):', err.code, err.message, err));
   },
 
-  addRound: async (sessionId, winnerId, loserIds, amount) => {
-    if (amount <= 0 || loserIds.length === 0) return;
+  addRound: async (sessionId, winnerId, stake) => {
+    if (stake <= 0) return;
 
     const session = get().sessions.find(s => s.id === sessionId);
-    if (!session) return;
+    if (!session || session.players.length < 2) return;
+
+    const playerCount = session.players.length;
 
     const newRound: Round = {
       id: uuid.v4() as string,
       winnerId,
       winnerName: session.players.find(p => p.id === winnerId)?.name || 'Unknown',
-      loserIds,
-      loserNames: loserIds.map(id => session.players.find(p => p.id === id)?.name || 'Unknown'),
-      amount: amount,
-      splitAmount: 0,
+      stake,
+      playerCount,
       timestamp: Date.now(),
     };
 
     const updatedPlayers = session.players.map(player => {
       if (player.id === winnerId) {
-        return { ...player, balance: player.balance + amount };
+        return { ...player, balance: player.balance + stake * (playerCount - 1) };
       }
-      return player;
+      return { ...player, balance: player.balance - stake };
     });
 
     const updatedSession = {
@@ -284,8 +379,12 @@ export const useStore = create<StoreState>((set, get) => ({
       players: updatedPlayers,
     };
 
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
     setDoc(doc(db, 'sessions', sessionId), updatedSession)
-      .catch(err => console.error('[Firestore] setDoc failed (addRound):', err));
+      .then(() => console.log('[Firestore] write success (addRound)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (addRound):', err.code, err.message, err));
   },
 
   deleteRound: async (sessionId, roundId) => {
@@ -295,11 +394,12 @@ export const useStore = create<StoreState>((set, get) => ({
     const roundToDelete = session.rounds.find(r => r.id === roundId);
     if (!roundToDelete) return;
 
+    // Reverse the stake-based deltas
     const updatedPlayers = session.players.map(player => {
       if (player.id === roundToDelete.winnerId) {
-        return { ...player, balance: player.balance - roundToDelete.amount };
+        return { ...player, balance: player.balance - roundToDelete.stake * (roundToDelete.playerCount - 1) };
       }
-      return player;
+      return { ...player, balance: player.balance + roundToDelete.stake };
     });
 
     const updatedSession = {
@@ -308,42 +408,46 @@ export const useStore = create<StoreState>((set, get) => ({
       players: updatedPlayers,
     };
 
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
     setDoc(doc(db, 'sessions', sessionId), updatedSession)
-      .catch(err => console.error('[Firestore] setDoc failed (deleteRound):', err));
+      .then(() => console.log('[Firestore] write success (deleteRound)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (deleteRound):', err.code, err.message, err));
   },
 
-  editRound: async (sessionId, roundId, newWinnerId, newLoserIds, newAmount) => {
-    if (newAmount <= 0 || newLoserIds.length === 0) return;
+  editRound: async (sessionId, roundId, newWinnerId, newStake) => {
+    if (newStake <= 0) return;
 
     const session = get().sessions.find(s => s.id === sessionId);
-    if (!session) return;
+    if (!session || session.players.length < 2) return;
 
     const oldRound = session.rounds.find(r => r.id === roundId);
     if (!oldRound) return;
 
-    // Reverse old round's balance impact
+    // Reverse old round's stake-based deltas
     let updatedPlayers = session.players.map(player => {
       if (player.id === oldRound.winnerId) {
-        return { ...player, balance: player.balance - oldRound.amount };
+        return { ...player, balance: player.balance - oldRound.stake * (oldRound.playerCount - 1) };
       }
-      return player;
+      return { ...player, balance: player.balance + oldRound.stake };
     });
 
-    // Apply new round's balance impact
+    // Apply new round's stake-based deltas
+    const newPlayerCount = session.players.length;
     updatedPlayers = updatedPlayers.map(player => {
       if (player.id === newWinnerId) {
-        return { ...player, balance: player.balance + newAmount };
+        return { ...player, balance: player.balance + newStake * (newPlayerCount - 1) };
       }
-      return player;
+      return { ...player, balance: player.balance - newStake };
     });
 
     const editedRound: Round = {
       ...oldRound,
       winnerId: newWinnerId,
       winnerName: session.players.find(p => p.id === newWinnerId)?.name || 'Unknown',
-      loserIds: newLoserIds,
-      loserNames: newLoserIds.map(id => session.players.find(p => p.id === id)?.name || 'Unknown'),
-      amount: newAmount,
+      stake: newStake,
+      playerCount: newPlayerCount,
       editedAt: Date.now(),
     };
 
@@ -353,7 +457,17 @@ export const useStore = create<StoreState>((set, get) => ({
       players: updatedPlayers,
     };
 
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
     setDoc(doc(db, 'sessions', sessionId), updatedSession)
-      .catch(err => console.error('[Firestore] setDoc failed (editRound):', err));
+      .then(() => console.log('[Firestore] write success (editRound)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (editRound):', err.code, err.message, err));
   },
-}));
+}),
+{
+  name: 'teen-patti-storage',
+  storage: createJSONStorage(() => AsyncStorage),
+  partialize: (state) => ({ sessions: state.sessions }),
+}
+));

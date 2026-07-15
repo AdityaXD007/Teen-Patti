@@ -19,6 +19,8 @@ export const SessionsScreen = ({ navigation }: any) => {
   const leaveSession = useStore(state => state.leaveSession);
   const joinSession = useStore(state => state.joinSession);
   const uid = useStore(state => state.uid);
+  const pendingNavigationSessionId = useStore(state => state.pendingNavigationSessionId);
+  const setPendingNavigationSessionId = useStore(state => state.setPendingNavigationSessionId);
 
   const [isJoinModalVisible, setIsJoinModalVisible] = useState(false);
   const [isScannerVisible, setIsScannerVisible] = useState(false);
@@ -32,6 +34,15 @@ export const SessionsScreen = ({ navigation }: any) => {
   useEffect(() => {
     loadSessions();
   }, []);
+
+  // Handle navigation after creating a new session
+  useEffect(() => {
+    if (pendingNavigationSessionId) {
+      const sessionId = pendingNavigationSessionId;
+      setPendingNavigationSessionId(null);
+      navigation.navigate('SessionDetail', { sessionId });
+    }
+  }, [pendingNavigationSessionId]);
 
   useEffect(() => {
     const checkLastSession = async () => {
@@ -173,7 +184,7 @@ export const SessionsScreen = ({ navigation }: any) => {
               <Text style={styles.statText}>{item.players.length} Players</Text>
             </View>
             <View style={styles.statChip}>
-              <Text style={styles.statLabel}>Total Rounds:</Text>
+              <Text style={styles.statLabel}>Total Round:</Text>
               <Text style={styles.statText}>{item.rounds.length}</Text>
             </View>
           </View>

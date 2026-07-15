@@ -8,6 +8,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export const CreateSessionScreen = ({ navigation }: any) => {
   const createSession = useStore(state => state.createSession);
+  const setPendingNavigationSessionId = useStore(state => state.setPendingNavigationSessionId);
   const [sessionName, setSessionName] = useState('');
   const [playerNameInput, setPlayerNameInput] = useState('');
   const [players, setPlayers] = useState<string[]>([]);
@@ -34,10 +35,10 @@ export const CreateSessionScreen = ({ navigation }: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const sessionId = await createSession(sessionName, players);
       if (sessionId) {
-        navigation.replace('SessionDetail', { sessionId });
-      } else {
-        navigation.goBack();
+        // Set the pending navigation ID — SessionsScreen will pick this up
+        setPendingNavigationSessionId(sessionId);
       }
+      navigation.goBack();
     }
   };
 

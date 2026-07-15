@@ -36,10 +36,9 @@ export const HistoryTab = ({ route }: any) => {
     );
   };
 
-  const handleEditSave = (newWinnerId: string, newAmount: number) => {
+  const handleEditSave = (newWinnerId: string, newStake: number) => {
     if (!editingRound) return;
-    const newLoserIds = session.players.filter(p => p.id !== newWinnerId).map(p => p.id);
-    editRound(sessionId, editingRound.id, newWinnerId, newLoserIds, newAmount);
+    editRound(sessionId, editingRound.id, newWinnerId, newStake);
     setEditingRound(null);
   };
 

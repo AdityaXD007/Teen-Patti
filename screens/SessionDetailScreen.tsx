@@ -41,15 +41,20 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
   }, [sessionId]);
 
   React.useEffect(() => {
+    // Give the session a moment to load before navigating away
     if (!session) {
-      navigation.goBack();
+      const timeout = setTimeout(() => {
+        // Re-check after delay — only go back if truly missing
+        const currentSession = useStore.getState().sessions.find(s => s.id === sessionId);
+        if (!currentSession) {
+          navigation.goBack();
+        }
+      }, 1500);
+      return () => clearTimeout(timeout);
     }
   }, [session, navigation]);
 
   if (!session || tabLoading) {
-    if (!session) {
-      navigation.goBack();
-    }
     return null;
   }
 

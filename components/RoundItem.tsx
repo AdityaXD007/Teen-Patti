@@ -34,7 +34,12 @@ export const RoundItem = ({ round, onEdit, onDelete }: RoundItemProps) => {
           <MaterialCommunityIcons name="crown" size={14} color={theme.colors.accent} style={{ marginRight: 4 }} />
           <Text style={styles.winnerName}>{round.winnerName}</Text>
         </View>
-        <Text style={styles.amount}>+Rs. {round.amount}</Text>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.amount}>+Rs. {round.stake * round.playerCount}</Text>
+          <Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>
+            {round.stake}/player · {round.playerCount}p
+          </Text>
+        </View>
       </View>
 
       {/* Bottom row: timestamps + action buttons */}

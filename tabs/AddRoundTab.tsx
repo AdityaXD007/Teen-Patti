@@ -30,28 +30,24 @@ export const AddRoundTab = ({ route, navigation }: any) => {
   };
 
   const amount = parseInt(amountStr, 10);
-  const autoLoserIds = session.players.filter(p => p.id !== winnerId).map(p => p.id);
-  const isValid = winnerId && autoLoserIds.length > 0 && !isNaN(amount) && amount > 0;
+  const tooFewPlayers = session.players.length < 2;
+  const isValid = winnerId && !isNaN(amount) && amount > 0 && !tooFewPlayers;
 
   const handleAddRound = async () => {
-    if (isValid && session.players.length >= 2) {
+    if (isValid && !tooFewPlayers) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await addRound(sessionId, winnerId, autoLoserIds, amount);
+      await addRound(sessionId, winnerId, amount);
       confettiRef.current?.play();
       setWinnerId(null);
       setAmountStr('');
-      Alert.alert('Success', 'Round added successfully');
     }
   };
 
   const getWinnerName = () => session.players.find(p => p.id === winnerId)?.name;
-  const splitAmount = isValid ? Math.round(amount / autoLoserIds.length) : 0;
-  const actualAmount = splitAmount * autoLoserIds.length;
 
-  const handleEditSave = (newWinnerId: string, newAmount: number) => {
+  const handleEditSave = (newWinnerId: string, newStake: number) => {
     if (!editingRound) return;
-    const newLoserIds = session.players.filter(p => p.id !== newWinnerId).map(p => p.id);
-    editRound(sessionId, editingRound.id, newWinnerId, newLoserIds, newAmount);
+    editRound(sessionId, editingRound.id, newWinnerId, newStake);
     setEditingRound(null);
   };
 
@@ -101,7 +97,7 @@ export const AddRoundTab = ({ route, navigation }: any) => {
           ))}
         </View>
 
-        <Text style={styles.label}>Amount Won</Text>
+        <Text style={styles.label}>Stake per player</Text>
         <View style={styles.amountContainer}>
           <Text style={styles.currencySymbol}>Rs. </Text>
           <TextInput
@@ -116,8 +112,8 @@ export const AddRoundTab = ({ route, navigation }: any) => {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickAmountsContainer}>
           {(() => {
-            const recentAmounts = Array.from(new Set(session.rounds.map(r => r.amount))).slice(0, 5);
-            const quickAmounts = recentAmounts.length > 0 ? recentAmounts : [100, 500, 1000, 5000];
+            const recentStakes = Array.from(new Set(session.rounds.map(r => r.stake))).slice(0, 5);
+            const quickAmounts = recentStakes.length > 0 ? recentStakes : [10, 20, 50, 100];
             return quickAmounts.map((amt) => (
               <TouchableOpacity
                 key={amt}
@@ -136,7 +132,19 @@ export const AddRoundTab = ({ route, navigation }: any) => {
         {isValid && (
           <View style={styles.previewBox}>
             <Text style={styles.previewText}>
-              <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text> wins Rs. {amount}
+              <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text>
+              {' wins Rs. '}{amount * session.players.length}
+            </Text>
+            <Text style={[styles.previewText, { marginTop: 4, fontSize: 13, color: theme.colors.textSecondary }]}>
+              Each player stakes Rs. {amount} · {session.players.length} players
+            </Text>
+          </View>
+        )}
+
+        {tooFewPlayers && (
+          <View style={[styles.previewBox, { borderColor: theme.colors.lossRed }]}>
+            <Text style={[styles.previewText, { color: theme.colors.lossRed }]}>
+              Need at least 2 players to record a round.
             </Text>
           </View>
         )}
