@@ -23,7 +23,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     userInterfaceStyle: 'automatic',
     newArchEnabled: true,
     ios: {
-      buildNumber: '4',
+      buildNumber: '5',
       usesAppleSignIn: true,
       supportsTablet: true,
       runtimeVersion: '1.0.0',
@@ -41,7 +41,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     android: {
       ...config.android,
-      versionCode: 42,
+      versionCode: 43,
       runtimeVersion: '1.0.0',
       googleServicesFile: './google-services.json',
       adaptiveIcon: {
@@ -110,7 +110,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       "url": "https://u.expo.dev/09cc93dc-0fb9-4f49-803f-0a6961fe7cf2",
       enabled: true,
       checkAutomatically: 'ON_LOAD',
-      fallbackToCacheTimeout: 0,
+      fallbackToCacheTimeout: 3000,
 
     }
   }
