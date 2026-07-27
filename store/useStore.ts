@@ -188,8 +188,12 @@ export const useStore = create<StoreState>()(
       }
     });
 
+    // Remove sessions from state that are no longer tracked
+    set((state) => ({
+      sessions: state.sessions.filter(s => mySessionIds.includes(s.id)),
+    }));
+
     if (mySessionIds.length === 0) {
-      // Don't clear sessions here if using persist, as they might be loaded from storage
       return;
     }
 
@@ -282,31 +286,40 @@ export const useStore = create<StoreState>()(
   },
 
   deleteSession: async (sessionId) => {
-    await ensureAuth();
-    // Delete from backend
-    deleteDoc(doc(db, 'sessions', sessionId))
-      .catch(err => console.error('[Firestore] deleteDoc failed (deleteSession):', err));
-    // Remove locally
-    await removeMySessionId(sessionId);
-    
+    // Immediately remove from UI state
+    set((state) => ({
+      sessions: state.sessions.filter(s => s.id !== sessionId),
+    }));
+
+    // Unsubscribe listener first to prevent snapshot from re-adding the session
     if (unsubscribes[sessionId]) {
       unsubscribes[sessionId]();
       delete unsubscribes[sessionId];
     }
-    
-    get().loadSessions();
+
+    // Remove from local tracking
+    await removeMySessionId(sessionId);
+
+    // Delete from backend
+    await ensureAuth();
+    deleteDoc(doc(db, 'sessions', sessionId))
+      .catch(err => console.error('[Firestore] deleteDoc failed (deleteSession):', err));
   },
 
   leaveSession: async (sessionId) => {
-    // Remove locally only
-    await removeMySessionId(sessionId);
-    
+    // Immediately remove from UI state
+    set((state) => ({
+      sessions: state.sessions.filter(s => s.id !== sessionId),
+    }));
+
+    // Unsubscribe listener
     if (unsubscribes[sessionId]) {
       unsubscribes[sessionId]();
       delete unsubscribes[sessionId];
     }
-    
-    get().loadSessions();
+
+    // Remove from local tracking
+    await removeMySessionId(sessionId);
   },
 
   addPlayer: async (sessionId, playerName) => {

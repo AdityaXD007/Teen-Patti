@@ -148,10 +148,10 @@ export const EditRoundModal = ({ visible, round, players, onSave, onCancel }: Ed
           <View style={styles.previewBox}>
             <Text style={styles.previewText}>
               <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text>
-              {' wins Rs. '}{amount * (round?.playerCount || 2)}
+              {' wins Rs. '}{amount * ((round?.playerCount || 2) - 1)}
             </Text>
             <Text style={[styles.previewText, { marginTop: 4, fontSize: 13, color: theme.colors.textSecondary }]}>
-              Each player stakes Rs. {amount}
+              Rs. {amount * (round?.playerCount || 2)} pot · Rs. {amount} stake returned
             </Text>
           </View>
         )}

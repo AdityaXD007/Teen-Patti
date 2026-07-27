@@ -133,10 +133,10 @@ export const AddRoundTab = ({ route, navigation }: any) => {
           <View style={styles.previewBox}>
             <Text style={styles.previewText}>
               <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text>
-              {' wins Rs. '}{amount * session.players.length}
+              {' wins Rs. '}{amount * (session.players.length - 1)}
             </Text>
             <Text style={[styles.previewText, { marginTop: 4, fontSize: 13, color: theme.colors.textSecondary }]}>
-              Each player stakes Rs. {amount} · {session.players.length} players
+              Rs. {amount * session.players.length} pot · Rs. {amount} stake returned
             </Text>
           </View>
         )}

@@ -35,9 +35,9 @@ export const RoundItem = ({ round, onEdit, onDelete }: RoundItemProps) => {
           <Text style={styles.winnerName}>{round.winnerName}</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={styles.amount}>+Rs. {round.stake * round.playerCount}</Text>
+          <Text style={styles.amount}>+Rs. {round.stake * (round.playerCount - 1)}</Text>
           <Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>
-            {round.stake}/player · {round.playerCount}p
+            Rs. {round.stake * round.playerCount} pot · {round.stake}/player
           </Text>
         </View>
       </View>
