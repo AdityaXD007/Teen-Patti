@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,10 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { BottomSheetModal, BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
 import * as Haptics from 'expo-haptics';
 import { theme } from '../constants/theme';
 import { Round, Player } from '../store/useStore';
@@ -21,20 +23,14 @@ interface EditRoundModalProps {
 }
 
 export const EditRoundModal = ({ visible, round, players, onSave, onCancel }: EditRoundModalProps) => {
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
   const [winnerId, setWinnerId] = useState<string | null>(null);
   const [amountStr, setAmountStr] = useState('');
 
-  // Pre-fill when the sheet opens with a round
+  // Pre-fill when the modal opens with a round
   useEffect(() => {
     if (round && visible) {
       setWinnerId(round.winnerId);
       setAmountStr(round.stake.toString());
-      // Expand sheet
-      bottomSheetRef.current?.present();
-    } else {
-      // Close sheet
-      bottomSheetRef.current?.dismiss();
     }
   }, [round, visible]);
 
@@ -48,134 +44,115 @@ export const EditRoundModal = ({ visible, round, players, onSave, onCancel }: Ed
     }
   };
 
-  const handleCancel = useCallback(() => {
+  const handleCancel = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     onCancel();
-  }, [onCancel]);
-
-  const handleSheetChange = useCallback((index: number) => {
-    if (index === -1) {
-      // Sheet was closed by gesture
-      onCancel();
-    }
-  }, [onCancel]);
-
-  const renderBackdrop = useCallback(
-    (props: any) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.6}
-        pressBehavior="close"
-      />
-    ),
-    []
-  );
+  };
 
   const getWinnerName = () => players.find(p => p.id === winnerId)?.name;
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
-      index={0}
-      enableDynamicSizing
-      enablePanDownToClose
-      onChange={handleSheetChange}
-      backdropComponent={renderBackdrop}
-      handleIndicatorStyle={styles.handleIndicator}
-      backgroundStyle={styles.sheetBackground}
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-      android_keyboardInputMode="adjustResize"
-    >
-      <BottomSheetView style={styles.sheetContent}>
-        <Text style={styles.title}>Edit Round</Text>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCancel}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Tap outside to dismiss */}
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleCancel} />
 
-        {/* Created / Edited info */}
-        {round && (
-          <View style={styles.timestampRow}>
-            <Text style={styles.timestampText}>
-              Created {formatTime(round.timestamp)}
-            </Text>
-            {round.editedAt && (
-              <Text style={[styles.timestampText, styles.editedTimestamp]}>
-                {' · '}Edited {formatTime(round.editedAt)}
-              </Text>
-            )}
+        <View style={styles.sheet}>
+          {/* Handle indicator */}
+          <View style={styles.handleRow}>
+            <View style={styles.handle} />
           </View>
-        )}
 
-        {/* Winner picker */}
-        <Text style={styles.label}>Winner</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
-          {players.map(p => (
+          <Text style={styles.title}>Edit Round</Text>
+
+          {/* Created / Edited info */}
+          {round && (
+            <View style={styles.timestampRow}>
+              <Text style={styles.timestampText}>
+                Created {formatTime(round.timestamp)}
+              </Text>
+              {round.editedAt && (
+                <Text style={[styles.timestampText, styles.editedTimestamp]}>
+                  {' · '}Edited {formatTime(round.editedAt)}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Winner picker */}
+          <Text style={styles.label}>Winner</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsContainer}>
+            {players.map(p => (
+              <TouchableOpacity
+                key={p.id}
+                style={[
+                  styles.chip,
+                  winnerId === p.id && styles.chipSelected,
+                ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setWinnerId(p.id);
+                }}
+              >
+                <Text style={[styles.chipText, winnerId === p.id && styles.chipTextSelected]}>
+                  {p.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Amount input */}
+          <Text style={styles.label}>Stake per player</Text>
+          <View style={styles.amountContainer}>
+            <Text style={styles.currencySymbol}>Rs. </Text>
+            <TextInput
+              style={styles.amountInput}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={amountStr}
+              onChangeText={setAmountStr}
+              selectTextOnFocus
+            />
+          </View>
+
+          {/* Preview */}
+          {isValid && (
+            <View style={styles.previewBox}>
+              <Text style={styles.previewText}>
+                <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text>
+                {' wins Rs. '}{amount * (players.length - 1)}
+              </Text>
+              <Text style={[styles.previewText, { marginTop: 4, fontSize: 13, color: theme.colors.textSecondary }]}>
+                Rs. {amount * players.length} pot · Rs. {amount} stake returned
+              </Text>
+            </View>
+          )}
+
+          {/* Action buttons */}
+          <View style={styles.buttonRow}>
+            <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
             <TouchableOpacity
-              key={p.id}
-              style={[
-                styles.chip,
-                winnerId === p.id && styles.chipSelected,
-              ]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setWinnerId(p.id);
-              }}
+              style={[styles.saveButton, !isValid && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={!isValid}
             >
-              <Text style={[styles.chipText, winnerId === p.id && styles.chipTextSelected]}>
-                {p.name}
+              <Text style={[styles.saveButtonText, !isValid && styles.saveButtonTextDisabled]}>
+                Save Changes
               </Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {/* Amount input */}
-        <Text style={styles.label}>Stake per player</Text>
-        <View style={styles.amountContainer}>
-          <Text style={styles.currencySymbol}>Rs. </Text>
-          <TextInput
-            style={styles.amountInput}
-            keyboardType="numeric"
-            placeholder="0"
-            placeholderTextColor={theme.colors.textSecondary}
-            value={amountStr}
-            onChangeText={setAmountStr}
-            selectTextOnFocus
-          />
-        </View>
-
-        {/* Preview */}
-        {isValid && (
-          <View style={styles.previewBox}>
-            <Text style={styles.previewText}>
-              <Text style={{ color: theme.colors.winGreen }}>{getWinnerName()}</Text>
-              {' wins Rs. '}{amount * ((round?.playerCount || 2) - 1)}
-            </Text>
-            <Text style={[styles.previewText, { marginTop: 4, fontSize: 13, color: theme.colors.textSecondary }]}>
-              Rs. {amount * (round?.playerCount || 2)} pot · Rs. {amount} stake returned
-            </Text>
           </View>
-        )}
 
-        {/* Action buttons */}
-        <View style={styles.buttonRow}>
-          <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.saveButton, !isValid && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={!isValid}
-          >
-            <Text style={[styles.saveButtonText, !isValid && styles.saveButtonTextDisabled]}>
-              Save Changes
-            </Text>
-          </TouchableOpacity>
+          {/* Bottom safe area spacing */}
+          <View style={{ height: 16 }} />
         </View>
-
-        {/* Bottom safe area spacing */}
-        <View style={{ height: 16 }} />
-      </BottomSheetView>
-    </BottomSheetModal>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 };
 
@@ -193,20 +170,31 @@ const formatTime = (timestamp: number): string => {
 };
 
 const styles = StyleSheet.create({
-  sheetBackground: {
+  overlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  sheet: {
     backgroundColor: theme.colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-  },
-  handleIndicator: {
-    backgroundColor: theme.colors.textSecondary,
-    width: 40,
-    height: 4,
-    opacity: 0.5,
-  },
-  sheetContent: {
     padding: theme.spacing.lg,
     paddingTop: theme.spacing.sm,
+  },
+  handleRow: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.sm,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.textSecondary,
+    opacity: 0.5,
   },
   title: {
     ...theme.typography.title,

@@ -29,7 +29,9 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
   useEffect(() => {
     const loadLastTab = async () => {
       try {
-        const lastTab = await AsyncStorage.getItem(`lastTab_${sessionId}`);
+        let lastTab = await AsyncStorage.getItem(`lastTab_${sessionId}`);
+        // Migrate renamed tab
+        if (lastTab === 'Leaderboard') lastTab = 'Settlement';
         setInitialTab(lastTab || 'AddRound');
       } catch {
         setInitialTab('AddRound');
@@ -103,8 +105,8 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
           tabBarIcon: ({ focused, color, size }) => {
             let iconName: keyof typeof MaterialCommunityIcons.glyphMap = 'cards-playing-outline';
 
-            if (route.name === 'Leaderboard') {
-              iconName = focused ? 'crown' : 'crown-outline';
+            if (route.name === 'Settlement') {
+              iconName = focused ? 'handshake' : 'handshake-outline';
             } else if (route.name === 'AddRound') {
               iconName = focused ? 'poker-chip' : 'circle-multiple-outline';
             } else if (route.name === 'History') {
@@ -190,10 +192,10 @@ export const SessionDetailScreen = ({ route, navigation }: any) => {
           options={{ title: 'History' }}
         />
         <Tab.Screen
-          name="Leaderboard"
+          name="Settlement"
           component={LeaderboardTab}
           initialParams={{ sessionId }}
-          options={{ title: 'Leaderboard' }}
+          options={{ title: 'Settlement' }}
         />
       </Tab.Navigator>
 

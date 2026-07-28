@@ -22,13 +22,26 @@ export const PlayerCard = ({ player, rank, isTopPlayer }: PlayerCardProps) => {
           <Text style={styles.name}>{player.name}</Text>
         </View>
         <View style={styles.right}>
-          <Text style={[
-            styles.balance,
-            isPositive && { color: theme.colors.winGreen },
-            isNegative && { color: theme.colors.lossRed }
-          ]}>
-            {isPositive ? '+' : ''}Rs. {player.balance === 0 ? '0' : Math.round(player.balance)}
-          </Text>
+          {player.balance === 0 ? (
+            <Text style={styles.balance}>{player.balance}</Text>
+          ) : (
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={[
+                styles.balance,
+                isPositive && { color: theme.colors.winGreen },
+                isNegative && { color: theme.colors.lossRed }
+              ]}>
+                Rs. {Math.abs(Math.round(player.balance))}
+              </Text>
+              <Text style={[
+                styles.statusLabel,
+                isPositive && { color: theme.colors.winGreen },
+                isNegative && { color: theme.colors.lossRed }
+              ]}>
+                {isPositive ? 'wins' : 'owes'}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
     </View>
@@ -79,5 +92,13 @@ const styles = StyleSheet.create({
   },
   balance: {
     ...theme.typography.sectionHeader,
+  },
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: 2,
+    color: theme.colors.textSecondary,
   },
 });

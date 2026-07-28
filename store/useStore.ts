@@ -37,7 +37,15 @@ const normalizeSession = (session: any): Session => {
     const stake = Number(normR.stake) || 0;
     const playerCount = Number(normR.playerCount) || (session.players?.length ?? 2);
 
+    // Determine which players participated in this round
+    const participantIds: string[] | undefined = normR.participantIds || r.participantIds;
+
     for (const p of (session.players || [])) {
+      // If participantIds exist, only affect those players
+      if (participantIds && !participantIds.includes(p.id)) {
+        continue;
+      }
+
       if (p.id === normR.winnerId) {
         balanceMap[p.id] += stake * (playerCount - 1);
       } else {
@@ -52,7 +60,7 @@ const normalizeSession = (session: any): Session => {
         }
       }
     }
-    return { ...normR, stake, playerCount };
+    return { ...normR, stake, playerCount, ...(participantIds && { participantIds }) };
   });
 
   return {
@@ -77,6 +85,7 @@ export interface Round {
   winnerName: string;
   stake: number;
   playerCount: number;
+  participantIds?: string[];
   timestamp: number;
   editedAt?: number;
 }
@@ -369,6 +378,7 @@ export const useStore = create<StoreState>()(
     if (!session || session.players.length < 2) return;
 
     const playerCount = session.players.length;
+    const participantIds = session.players.map(p => p.id);
 
     const newRound: Round = {
       id: uuid.v4() as string,
@@ -376,6 +386,7 @@ export const useStore = create<StoreState>()(
       winnerName: session.players.find(p => p.id === winnerId)?.name || 'Unknown',
       stake,
       playerCount,
+      participantIds,
       timestamp: Date.now(),
     };
 
@@ -461,6 +472,7 @@ export const useStore = create<StoreState>()(
       winnerName: session.players.find(p => p.id === newWinnerId)?.name || 'Unknown',
       stake: newStake,
       playerCount: newPlayerCount,
+      participantIds: session.players.map(p => p.id),
       editedAt: Date.now(),
     };
 
