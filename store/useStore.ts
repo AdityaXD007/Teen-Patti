@@ -26,6 +26,27 @@ const normalizeRound = (round: any): Round => {
   };
 };
 
+export const getRoundParticipants = (r: any, allPlayers: any[]): string[] => {
+  if (Array.isArray(r.participantIds) && r.participantIds.length > 0) {
+    return r.participantIds;
+  }
+  if (Array.isArray(r.loserIds) && r.loserIds.length > 0) {
+    const set = new Set([r.winnerId, ...r.loserIds]);
+    return Array.from(set);
+  }
+  // Legacy round fallback: take up to r.playerCount players present, ensuring winner is included
+  const pCount = Number(r.playerCount) || 2;
+  const ids: string[] = [];
+  if (r.winnerId) ids.push(r.winnerId);
+  for (const p of allPlayers) {
+    if (ids.length >= pCount) break;
+    if (!ids.includes(p.id)) {
+      ids.push(p.id);
+    }
+  }
+  return ids;
+};
+
 const normalizeSession = (session: any): Session => {
   const balanceMap: { [id: string]: number } = {};
   for (const p of (session.players || [])) {
@@ -35,33 +56,36 @@ const normalizeSession = (session: any): Session => {
   const normalizedRounds = (session.rounds || []).map((r: any) => {
     const normR = normalizeRound(r);
     const stake = Number(normR.stake) || 0;
-    const playerCount = Number(normR.playerCount) || (session.players?.length ?? 2);
 
-    // Determine which players participated in this round
-    const participantIds: string[] | undefined = normR.participantIds || r.participantIds;
+    // Get explicit participant IDs for this round
+    const participantIds = getRoundParticipants(r, session.players || []);
+    const playerCount = participantIds.length;
 
     for (const p of (session.players || [])) {
-      // If participantIds exist, only affect those players
-      if (participantIds && !participantIds.includes(p.id)) {
+      // If player did NOT participate in this round (e.g. joined mid-game later), skip them!
+      if (!participantIds.includes(p.id)) {
         continue;
       }
 
       if (p.id === normR.winnerId) {
         balanceMap[p.id] += stake * (playerCount - 1);
       } else {
-        // For old rounds, only deduct if they were explicitly a loser
-        if (r.loserIds) {
-          if (r.loserIds.includes(p.id)) {
-            balanceMap[p.id] -= stake;
-          }
-        } else {
-          // For new rounds, everyone else loses the stake
-          balanceMap[p.id] -= stake;
-        }
+        balanceMap[p.id] -= stake;
       }
     }
-    return { ...normR, stake, playerCount, ...(participantIds && { participantIds }) };
+    return { ...normR, stake, playerCount, participantIds };
   });
+
+  // Factor in settled payments so standings/leaderboard reflect completed settlements
+  const settledPayments: SettledPayment[] = session.settledPayments || [];
+  for (const sp of settledPayments) {
+    if (balanceMap[sp.fromId] !== undefined) {
+      balanceMap[sp.fromId] += Number(sp.amount) || 0;
+    }
+    if (balanceMap[sp.toId] !== undefined) {
+      balanceMap[sp.toId] -= Number(sp.amount) || 0;
+    }
+  }
 
   return {
     ...session,
@@ -90,6 +114,13 @@ export interface Round {
   editedAt?: number;
 }
 
+export interface SettledPayment {
+  fromId: string;
+  toId: string;
+  amount: number;
+  settledAt: number;
+}
+
 export interface Session {
   id: string;
   joinCode: string;
@@ -98,6 +129,7 @@ export interface Session {
   createdAt: number;
   players: Player[];
   rounds: Round[];
+  settledPayments?: SettledPayment[];
 }
 
 interface StoreState {
@@ -116,6 +148,9 @@ interface StoreState {
   addRound: (sessionId: string, winnerId: string, stake: number) => Promise<void>;
   deleteRound: (sessionId: string, roundId: string) => Promise<void>;
   editRound: (sessionId: string, roundId: string, newWinnerId: string, newStake: number) => Promise<void>;
+  markPaymentSettled: (sessionId: string, fromId: string, toId: string, amount: number) => Promise<void>;
+  unmarkPaymentSettled: (sessionId: string, fromId: string, toId: string, amount: number) => Promise<void>;
+  clearSessionHistory: (sessionId: string) => Promise<void>;
   pendingNavigationSessionId: string | null;
   setPendingNavigationSessionId: (id: string | null) => void;
 }
@@ -338,13 +373,14 @@ export const useStore = create<StoreState>()(
     const session = get().sessions.find(s => s.id === sessionId);
     if (!session) return;
 
-    const updatedSession = {
+    const rawSession = {
       ...session,
       players: [
         ...session.players,
         { id: uuid.v4() as string, name: trimmedName, balance: 0 },
       ],
     };
+    const updatedSession = normalizeSession(rawSession);
 
     set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
 
@@ -358,10 +394,11 @@ export const useStore = create<StoreState>()(
     const session = get().sessions.find(s => s.id === sessionId);
     if (!session) return;
 
-    const updatedSession = {
+    const rawSession = {
       ...session,
       players: session.players.filter(p => p.id !== playerId),
     };
+    const updatedSession = normalizeSession(rawSession);
 
     set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
 
@@ -390,18 +427,11 @@ export const useStore = create<StoreState>()(
       timestamp: Date.now(),
     };
 
-    const updatedPlayers = session.players.map(player => {
-      if (player.id === winnerId) {
-        return { ...player, balance: player.balance + stake * (playerCount - 1) };
-      }
-      return { ...player, balance: player.balance - stake };
-    });
-
-    const updatedSession = {
+    const rawSession = {
       ...session,
       rounds: [newRound, ...session.rounds],
-      players: updatedPlayers,
     };
+    const updatedSession = normalizeSession(rawSession);
 
     set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
 
@@ -415,22 +445,11 @@ export const useStore = create<StoreState>()(
     const session = get().sessions.find(s => s.id === sessionId);
     if (!session) return;
 
-    const roundToDelete = session.rounds.find(r => r.id === roundId);
-    if (!roundToDelete) return;
-
-    // Reverse the stake-based deltas
-    const updatedPlayers = session.players.map(player => {
-      if (player.id === roundToDelete.winnerId) {
-        return { ...player, balance: player.balance - roundToDelete.stake * (roundToDelete.playerCount - 1) };
-      }
-      return { ...player, balance: player.balance + roundToDelete.stake };
-    });
-
-    const updatedSession = {
+    const rawSession = {
       ...session,
       rounds: session.rounds.filter(r => r.id !== roundId),
-      players: updatedPlayers,
     };
+    const updatedSession = normalizeSession(rawSession);
 
     set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
 
@@ -449,38 +468,19 @@ export const useStore = create<StoreState>()(
     const oldRound = session.rounds.find(r => r.id === roundId);
     if (!oldRound) return;
 
-    // Reverse old round's stake-based deltas
-    let updatedPlayers = session.players.map(player => {
-      if (player.id === oldRound.winnerId) {
-        return { ...player, balance: player.balance - oldRound.stake * (oldRound.playerCount - 1) };
-      }
-      return { ...player, balance: player.balance + oldRound.stake };
-    });
-
-    // Apply new round's stake-based deltas
-    const newPlayerCount = session.players.length;
-    updatedPlayers = updatedPlayers.map(player => {
-      if (player.id === newWinnerId) {
-        return { ...player, balance: player.balance + newStake * (newPlayerCount - 1) };
-      }
-      return { ...player, balance: player.balance - newStake };
-    });
-
     const editedRound: Round = {
       ...oldRound,
       winnerId: newWinnerId,
       winnerName: session.players.find(p => p.id === newWinnerId)?.name || 'Unknown',
       stake: newStake,
-      playerCount: newPlayerCount,
-      participantIds: session.players.map(p => p.id),
       editedAt: Date.now(),
     };
 
-    const updatedSession = {
+    const rawSession = {
       ...session,
       rounds: session.rounds.map(r => r.id === roundId ? editedRound : r),
-      players: updatedPlayers,
     };
+    const updatedSession = normalizeSession(rawSession);
 
     set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
 
@@ -488,6 +488,69 @@ export const useStore = create<StoreState>()(
     setDoc(doc(db, 'sessions', sessionId), updatedSession)
       .then(() => console.log('[Firestore] write success (editRound)'))
       .catch((err: any) => console.error('[Firestore] setDoc failed (editRound):', err.code, err.message, err));
+  },
+
+  markPaymentSettled: async (sessionId, fromId, toId, amount) => {
+    const session = get().sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    const newPayment: SettledPayment = { fromId, toId, amount, settledAt: Date.now() };
+    const rawSession = {
+      ...session,
+      settledPayments: [...(session.settledPayments || []), newPayment],
+    };
+    const updatedSession = normalizeSession(rawSession);
+
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .then(() => console.log('[Firestore] write success (markPaymentSettled)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (markPaymentSettled):', err.code, err.message, err));
+  },
+
+  unmarkPaymentSettled: async (sessionId, fromId, toId, amount) => {
+    const session = get().sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    const existing = [...(session.settledPayments || [])];
+    // Find and remove the first matching settled payment
+    const idx = existing.findIndex(p => p.fromId === fromId && p.toId === toId && p.amount === amount);
+    if (idx === -1) return;
+    existing.splice(idx, 1);
+
+    const rawSession = {
+      ...session,
+      settledPayments: existing,
+    };
+    const updatedSession = normalizeSession(rawSession);
+
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .then(() => console.log('[Firestore] write success (unmarkPaymentSettled)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (unmarkPaymentSettled):', err.code, err.message, err));
+  },
+
+  clearSessionHistory: async (sessionId: string) => {
+    const session = get().sessions.find(s => s.id === sessionId);
+    if (!session) return;
+
+    const rawSession = {
+      ...session,
+      rounds: [],
+      settledPayments: [],
+      players: session.players.map(p => ({ ...p, balance: 0 })),
+    };
+    const updatedSession = normalizeSession(rawSession);
+
+    set({ sessions: get().sessions.map(s => s.id === sessionId ? updatedSession : s) });
+
+    await ensureAuth();
+    setDoc(doc(db, 'sessions', sessionId), updatedSession)
+      .then(() => console.log('[Firestore] write success (clearSessionHistory)'))
+      .catch((err: any) => console.error('[Firestore] setDoc failed (clearSessionHistory):', err.code, err.message, err));
   },
 }),
 {
