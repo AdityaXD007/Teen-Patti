@@ -39,7 +39,6 @@ export const AddRoundTab = ({ route, navigation }: any) => {
       await addRound(sessionId, winnerId, amount);
       confettiRef.current?.play();
       setWinnerId(null);
-      setAmountStr('');
     }
   };
 
